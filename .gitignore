@@ -1,0 +1,24 @@
+# Ignore everything by default
+*
+!*/
+
+# Include only the specified directories and their contents
+!Accessibility-Checker/
+!Accessibility-Checker-BE/
+!.gitignore
+!package-lock.json
+
+# Allow all files in the included directories
+!Accessibility-Checker/**
+!Accessibility-Checker-BE/**
+
+# Exclude node_modules and dist from both projects
+Accessibility-Checker/node_modules/
+Accessibility-Checker/dist/
+Accessibility-Checker/.angular/
+Accessibility-Checker-BE/node_modules/
+Accessibility-Checker-BE/.vercel/
+Accessibility-Checker-BE/uploads/
+Accessibility-Checker-BE/output/
+Accessibility-Checker-BE/python-server/__pycache__/
+Accessibility-Checker-BE/python-server/.venv/
