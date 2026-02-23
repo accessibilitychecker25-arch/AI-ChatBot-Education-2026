@@ -319,11 +319,13 @@ export class DashboardComponent {
             // Handle the Batch Response from Python
             const body = (event as HttpResponse<any>).body;
             
-            // Check if we got a list of results (Backend: { "files": [...] })
-            if (body && body.files && Array.isArray(body.files)) {
+            // Check if we got a list of results (Backend: { "resultss": [...] })
+            // if (body && body.files && Array.isArray(body.files)) {
+            if (body && body.results && Array.isArray(body.results)) {
               
               // Add all new reports to our list
-              const newReports = body.files.map((res: any) => {
+              const newReports = body.results.map((res: any) => {
+              // const newReports = body.files.map((res: any) => {
                 // Find the original file object to match (by name)
                 const orig = files.find(f => f.name === res.fileName) || files[0];
                 return { response: res, original: orig };
@@ -492,6 +494,7 @@ export class DashboardComponent {
   }
 
   private flattenIssues(res: DocxRemediationResponse): RemediationIssue[] {
+  
     if (!res?.report?.details) return [];
     const d = res.report.details;
     const out: RemediationIssue[] = [];
@@ -880,6 +883,18 @@ export class DashboardComponent {
         message: message,
       });
     }
+
+    // --- PowerPoint: missing slide titles ---
+  if ((d as any).slidesMissingTitles?.length) {
+    for (const s of (d as any).slidesMissingTitles) {
+      const slideNum = s?.slideNumber ?? '?';
+      const msg = s?.message || `Slide ${slideNum} is missing a title`;
+      out.push({
+        type: 'flagged',
+        message: msg,
+      });
+    }
+  }
 
     if (d.colorContrastIssues?.length)
       out.push({
