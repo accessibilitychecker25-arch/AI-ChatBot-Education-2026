@@ -100,6 +100,7 @@ export class FileUploadComponent {
     // Clear selection after submit so user can upload again
     this.selectedFile = undefined;
     this.selectedFiles = [];
+    this.resetNativeInputValue();
   }
 
   // Validate if a file is selected
