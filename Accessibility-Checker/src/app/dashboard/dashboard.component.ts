@@ -105,6 +105,15 @@ interface DocxRemediationResponse {
         description?: string;
         altText?: string;
       }>;
+            // PowerPoint: auto-fixed alt text details (added by backend)
+      autoFixedAltText?: Array<{
+        slideNumber: number;
+        shapeId?: string;
+        fix: string;
+        shapeName?: string;
+        altText: string;
+        note?: string;
+      }>;
       // Image locations provided in separate array  
       imageLocations?: Array<{
         location: string;
@@ -451,6 +460,7 @@ export class DashboardComponent {
             this.remediation = res;
             this.fileName = res.suggestedFileName ? res.suggestedFileName : "remediated.pptx";
             this.issues = this.flattenIssues(res);
+
             // Save processed report so the user can inspect it individually later (include original file)
             try {
               if (res && res.report) this.processedReports.push({ response: res, original: file });
@@ -999,7 +1009,9 @@ export class DashboardComponent {
           if (this.remediation?.report?.details?.documentProtected) {
             this.showPostDownloadBanner = true;
           }
-
+          
+          const isPptx = filename.toLowerCase().endsWith('.pptx');
+          if (isPptx) return;
           // Authoritative re-check: send the downloaded blob back to the upload analysis endpoint
           // so the UI shows the exact server-side post-remediation report (avoids client heuristics).
           try {
@@ -1050,6 +1062,14 @@ export class DashboardComponent {
   countAutoFixableIssues(): number {
     // Count issues that the backend automatically fixes during download/remediation
     // These are the same issues that show "fixed" status but weren't counted yet
+    // ✅ PPTX path: just trust backend summary.fixed
+    const details: any = this.remediation?.report?.details;
+    const summary: any = this.remediation?.report?.summary;
+
+    // PPTX reports have these keys
+    if (details?.imagesMissingOrBadAlt || details?.slidesMissingTitles) {
+      return summary?.fixed ?? 0;
+    }
     if (!this.remediation?.report?.details) return 0;
     
     const d = this.remediation.report.details;
@@ -1083,13 +1103,40 @@ export class DashboardComponent {
 
   // Count actual flagged issues as displayed to the user (forms count as 1 regardless of locations)
   getFlaggedCount(): number {
+    const details: any = this.remediation?.report?.details;
+    const summary: any = this.remediation?.report?.summary;
+
+    // PPTX: trust backend summary
+    if (details?.imagesMissingOrBadAlt || details?.slidesMissingTitles) {
+      return summary?.flagged ?? 0;
+    }
+
+    // DOCX: count rendered issues
     if (!this.issues) return 0;
     return this.issues.filter(issue => issue.type === 'flagged').length;
   }
 
-  // Count actual fixed issues as displayed to the user
   getFixedCount(): number {
+    const details: any = this.remediation?.report?.details;
+    const summary: any = this.remediation?.report?.summary;
+
+    // PPTX: trust backend summary
+    if (details?.imagesMissingOrBadAlt || details?.slidesMissingTitles) {
+      return summary?.fixed ?? 0;
+    }
+
+    // DOCX: count rendered issues
     if (!this.issues) return 0;
     return this.issues.filter(issue => issue.type === 'fixed').length;
   }
+  // getFlaggedCount(): number {
+  //   if (!this.issues) return 0;
+  //   return this.issues.filter(issue => issue.type === 'flagged').length;
+  // }
+
+  // // Count actual fixed issues as displayed to the user
+  // getFixedCount(): number {
+  //   if (!this.issues) return 0;
+  //   return this.issues.filter(issue => issue.type === 'fixed').length;
+  // }
 }

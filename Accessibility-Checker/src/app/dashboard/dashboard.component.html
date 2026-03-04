@@ -19,7 +19,7 @@
       <div *ngFor="let p of processedReports; let idx = index" class="p-2 border rounded flex items-center justify-between">
         <div>
           <div class="font-medium">{{ p.response.report.fileName || p.response.fileName || 'Untitled' }}</div>
-          <div class="text-sm text-gray-600">Fixed: {{ p.response.report.summary.fixed }} · Flagged: {{ p.response.report.summary.flagged }}</div>
+          <div class="text-sm text-white-600">Fixed: {{ p.response.report.summary.fixed }} · Flagged: {{ p.response.report.summary.flagged }}</div>
         </div>
         <div class="space-x-2">
           <button class="text-sm px-2 py-1 bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 rounded" (click)="selectReport(idx)">View report</button>
@@ -61,21 +61,39 @@
 
       <div class="flex space-x-4 mb-4">
         <span class="text-green-500 dark:text-green-400 font-medium">
-          Fixed: {{ getFixedCount() }}
+          <!-- Fixed: {{ getFixedCount() }} -->
+          Fixed: {{ remediation.report.summary.fixed }}
         </span>
-        <span class="self-center text-sm text-gray-700 dark:text-gray-300">(client-estimated auto-fixes: {{ countAutoFixableIssues() }})</span>
+        <!-- <span class="self-center text-sm text-gray-700 dark:text-gray-300">(client-estimated auto-fixes: {{ countAutoFixableIssues() }})</span> -->
+         <span class="self-center text-sm text-gray-700 dark:text-gray-300">(client-estimated auto-fixes: {{ remediation.report.summary.fixed }})</span>
         <span class="text-yellow-500 dark:text-yellow-400 font-medium">
           Flagged: {{ getFlaggedCount() }}
+          <!-- Flagged: {{ remediation.report.summary.flagged }} -->
         </span>
       </div>
 
-      <div *ngIf="remediation" class="mb-4">
+      <!-- <div *ngIf="remediation" class="mb-4">
         <h5 class="text-sm font-medium mb-2">Auto-fixed items (client estimate)</h5>
         <ul class="list-disc list-inside text-sm text-gray-700">
           <li *ngFor="let a of getAutoFixedItems()">{{ a }}</li>
           <li *ngIf="getAutoFixedItems().length === 0">(none detected)</li>
         </ul>
-      </div>      <div *ngIf="remediation" class="mb-4">
+      </div>       -->
+      <div *ngIf="remediation" class="mb-4">
+        <h5 class="text-sm font-medium mb-2">Auto-fixed items (backend)</h5>
+        <ul class="list-disc list-inside text-sm text-gray-700"
+            *ngIf="remediation.report.details.autoFixedAltText?.length; else noAutoFixes">
+          <li *ngFor="let a of remediation.report.details.autoFixedAltText">
+            Slide {{ a.slideNumber }} — {{ a.fix }}
+            <span *ngIf="a.altText"> ("{{ a.altText }}")</span>
+          </li>
+        </ul>
+
+        <ng-template #noAutoFixes>
+          <div class="text-sm text-gray-700">(none)</div>
+        </ng-template>
+      </div>
+      <div *ngIf="remediation" class="mb-4">
         <button class="text-sm underline text-blue-600 dark:text-blue-300" (click)="showRawReport = !showRawReport">
           {{ showRawReport ? 'Hide' : 'Show' }} raw remediation report
         </button>
@@ -92,7 +110,7 @@
 
       <div
         *ngIf="remediation.suggestedFileName || downloadFileName"
-        class="mt-2 text-sm text-gray-600"
+        class="mt-2 text-sm text-white-600"
       >
         Download filename: <code>{{ downloadFileName || remediation.suggestedFileName }}</code>
       </div>
@@ -134,7 +152,7 @@
         </li>
       </ul>
       <ng-template #noIssues
-        ><p class="text-gray-600">No issues to report.</p></ng-template
+        ><p class="gray-600">No issues to report.</p></ng-template
       >
     </div>
   </ng-container>
