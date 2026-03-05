@@ -7,6 +7,12 @@ import zipfile
 import xml.etree.ElementTree as ET
 import re
 import json
+from lxml import etree
+
+import platform
+import subprocess
+import uuid
+import win32com.client
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,7 +52,6 @@ async def debug_exception_handler(request: Request, exc: Exception):
     traceback.print_exc()
     return PlainTextResponse(str(exc), status_code=500)
 
-# Optional: request logging (safe - does NOT print file bytes)
 @app.middleware("http")
 async def access_log(request: Request, call_next):
     t0 = time.time()
@@ -58,6 +63,48 @@ async def access_log(request: Request, call_next):
 @app.get("/")
 def health_check():
     return {"status": "running", "service": "PowerPoint Accessibility Backend"}
+
+SOFFICE_PATH = r"C:\Program Files\LibreOffice\program\soffice.exe"
+
+def is_windows() -> bool:
+    return platform.system().lower().startswith("win")
+
+def convert_legacy_ppt_to_pptx_powerpoint(src_path: Path, out_dir: Path) -> Path:
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dst_path = out_dir / f"{src_path.stem}.pptx"
+
+    # try:
+    #     import win32com.client  # type: ignore
+    # except Exception as e:
+    #     raise RuntimeError(f"pywin32 not available: {e}")
+
+    pp = win32com.client.Dispatch("PowerPoint.Application")
+    pp.Visible = 1
+
+    try:
+        pres = pp.Presentations.Open(str(src_path), 1, 0, 0)  # ReadOnly=1, WithWindow=0
+        try:
+            pres.SaveAs(str(dst_path), 24)  # 24 = ppSaveAsOpenXMLPresentation (.pptx)
+        finally:
+            pres.Close()
+    finally:
+        pp.Quit()
+
+    if not dst_path.exists():
+        raise RuntimeError("PowerPoint conversion did not produce a .pptx file.")
+    return dst_path
+
+def convert_legacy_to_pptx(src_path: Path, out_dir: Path) -> Path:
+
+    if is_windows():
+        try:
+            return convert_legacy_ppt_to_pptx_powerpoint(src_path, out_dir)
+        except Exception as e:
+            # fallback to LibreOffice if PowerPoint fails
+            return convert_legacy_ppt_to_pptx_powerpoint(src_path, out_dir)
+    else:
+        return convert_legacy_ppt_to_pptx_powerpoint(src_path, out_dir)
     
 @app.post("/upload")
 async def upload_files(
@@ -89,22 +136,24 @@ async def upload_files(
             detail="No file uploaded. Send multipart/form-data with one of: files, file, pptxFile, docxFile"
         )
 
-    if len(incoming) > 7:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many files. You uploaded {len(incoming)}, but the limit is 7."
-        )
+    # if len(incoming) > 10:
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail=f"Too many files. You uploaded {len(incoming)}, but the limit is 10."
+    #     )
 
-    # For now handle single file (same as your current logic)
+    # For now handle single file
     up = incoming[0]
     filename = up.filename or "unnamed.pptx"
     filename_lower = filename.lower()
 
-    allowed_ext = (".pptx", ".ppt", ".pps", ".potx")
+    # allowed_ext = (".pptx", ".ppt", ".pps", ".potx")
+    allowed_ext = (".pptx", ".ppt", ".pps", ".pot", ".potx", ".ppsx")
+
     if not filename_lower.endswith(allowed_ext):
         raise HTTPException(
             status_code=400,
-            detail="Invalid file type. Please upload a PowerPoint file (.pptx, .ppt, .pps, or .potx)"
+            detail="Invalid file type. Please upload a PowerPoint file."
         )
 
     # Save upload
@@ -112,10 +161,19 @@ async def upload_files(
         file_location = UPLOAD_DIR / filename
         with file_location.open("wb") as buffer:
             shutil.copyfileobj(up.file, buffer)
+            
+        ext = Path(filename_lower).suffix
+        converted_dir = UPLOAD_DIR / "converted"
+
+        if ext in [".ppt", ".pps", ".pot"]:
+            pptx_input = convert_legacy_ppt_to_pptx_powerpoint(file_location, converted_dir)
+        else:
+            pptx_input = file_location
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
     # Stage output file (copy for now)
+    # Stage output file (NOW: remediate alt text into the output pptx)
     try:
         base = Path(filename).stem
         if base.startswith("remediated-"):
@@ -123,21 +181,131 @@ async def upload_files(
         else:
             out_name = f"remediated-{base}.pptx"
         out_path = OUTPUT_DIR / out_name
-        shutil.copyfile(file_location, out_path)
+
+        # fixed_count, fix_details = remediate_alt_text_pptx(file_location, out_path)
+        fixed_count, fix_details = remediate_alt_text_pptx(pptx_input, out_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to stage output file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to remediate alt text: {str(e)}")
 
     # Analyze & respond
+    # Analyze & respond (analyze the REMEDIATED file)
     try:
-        report = analyze_powerpoint(file_location, filename)
+        report = analyze_powerpoint(out_path, out_name)
+        report["summary"]["fixed"] += fixed_count
+        report["details"]["autoFixedAltText"] = fix_details
         return JSONResponse(content={
             "fileName": filename,
-            "suggestedFileName": out_name,   # important for /download
+            "suggestedFileName": out_name,
             "report": report
         })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to analyze file: {str(e)}")    
+        raise HTTPException(status_code=500, detail=f"Failed to analyze file: {str(e)}")
 
+# @app.post("/upload")
+# async def upload_files(
+#     # Accept ANY of these common multipart field names:
+#     files: Optional[List[UploadFile]] = File(default=None),
+#     file: Optional[UploadFile] = File(default=None),
+#     pptxFile: Optional[UploadFile] = File(default=None),
+#     docxFile: Optional[UploadFile] = File(default=None),
+# ):
+#     """
+#     Accepts PowerPoint files, analyzes them, and returns accessibility report.
+#     Compatible with FE sending: files[] OR file OR pptxFile OR docxFile.
+#     """
+
+#     # ---- normalize inputs into one list ----
+#     incoming: List[UploadFile] = []
+#     if files:
+#         incoming.extend(files)
+#     if file:
+#         incoming.append(file)
+#     if pptxFile:
+#         incoming.append(pptxFile)
+#     if docxFile:
+#         incoming.append(docxFile)
+
+#     if not incoming:
+#         raise HTTPException(
+#             status_code=400,
+#             detail="No file uploaded. Send multipart/form-data with one of: files, file, pptxFile, docxFile"
+#         )
+
+#     # if len(incoming) > 10:
+#     #     raise HTTPException(
+#     #         status_code=400,
+#     #         detail=f"Too many files. You uploaded {len(incoming)}, but the limit is 10."
+#     #     )
+
+#     # For now handle single file (same as your current logic)
+#     up = incoming[0]
+#     filename = up.filename or "unnamed.pptx"
+#     filename_lower = filename.lower()
+
+#     allowed_ext = (".pptx", ".ppt", ".pps", ".pot", ".potx", ".ppsx")
+#     if not filename_lower.endswith(allowed_ext):
+#         raise HTTPException(status_code=400, detail="Invalid file type")
+
+#     file_location = UPLOAD_DIR / filename
+#     with file_location.open("wb") as buffer:
+#         shutil.copyfileobj(up.file, buffer)
+
+#     ext = Path(filename_lower).suffix
+
+#     # Make a per-upload converted folder (prevents collisions)
+#     converted_dir = UPLOAD_DIR / "converted" / uuid.uuid4().hex[:8]
+#     converted_dir.mkdir(parents=True, exist_ok=True)
+
+#     if ext in [".ppt", ".pps", ".pot"]:
+#         # Windows: PowerPoint first; otherwise LibreOffice
+#         pptx_input = convert_legacy_to_pptx(file_location, converted_dir)
+#     else:
+#         pptx_input = file_location  # already OpenXML
+
+#     # Save upload
+#     try:
+#         file_location = UPLOAD_DIR / filename
+#         with file_location.open("wb") as buffer:
+#             shutil.copyfileobj(up.file, buffer)
+            
+#         ext = Path(filename_lower).suffix
+#         converted_dir = UPLOAD_DIR / "converted"
+
+#         if ext in [".ppt", ".pps", ".pot"]:
+#             pptx_input = convert_legacy_ppt_to_pptx_powerpoint(file_location, converted_dir)
+#         else:
+#             pptx_input = file_location
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
+#     # Stage output file (copy for now)
+#     # Stage output file (NOW: remediate alt text into the output pptx)
+#     try:
+#         base = Path(filename).stem
+#         if base.startswith("remediated-"):
+#             out_name = f"{base}.pptx"
+#         else:
+#             out_name = f"remediated-{base}.pptx"
+#         out_path = OUTPUT_DIR / out_name
+
+#         # fixed_count, fix_details = remediate_alt_text_pptx(file_location, out_path)
+#         fixed_count, fix_details = remediate_alt_text_pptx(pptx_input, out_path)
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to remediate alt text: {str(e)}")
+
+#     # Analyze & respond
+#     # Analyze & respond (analyze the REMEDIATED file)
+#     try:
+#         report = analyze_powerpoint(out_path, out_name)
+#         report["summary"]["fixed"] += fixed_count
+#         report["details"]["autoFixedAltText"] = fix_details
+#         return JSONResponse(content={
+#             "fileName": filename,
+#             "suggestedFileName": out_name,
+#             "report": report
+#         })
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to analyze file: {str(e)}")
 
 def analyze_powerpoint(file_path: Path, filename: str):
     """
@@ -271,46 +439,273 @@ def check_list_formatting(slide_xml: str, slide_number: int):
     return issues
 
 
+ALT_TEXT_MAX = 250
+
 def check_slide_images(slide_xml: str, slide_number: int):
-    """Check images for missing alt text."""
     issues = []
-    
-    # Find all picture elements
+
     pic_pattern = r'<p:pic[\s\S]*?</p:pic>'
     pic_matches = re.findall(pic_pattern, slide_xml)
-    
+
     for pic_xml in pic_matches:
-        # Check for alt text in descr attribute
-        descr_pattern = r'<p:cNvPr[^>]*descr="([^"]*)"'
-        descr_match = re.search(descr_pattern, pic_xml)
-        
-        alt_text = descr_match.group(1) if descr_match else ""
-        
+        cnvpr_pattern = r'<p:cNvPr([^>]*)/?>'
+        m = re.search(cnvpr_pattern, pic_xml)
+        attrs = m.group(1) if m else ""
+
+        def get_attr(attr_name: str) -> str:
+            am = re.search(rf'{attr_name}="([^"]*)"', attrs)
+            return am.group(1) if am else ""
+
+        shape_id = get_attr("id")
+        shape_name = get_attr("name")
+        alt_text = get_attr("descr")
+
+        alt_text_clean = (alt_text or "").strip().lower()
+        is_decorative = (alt_text_clean == "decorative")
+
+        # --- RULES ---
+
+        # 1. Missing alt text
         if not alt_text or alt_text.strip() == "":
             issues.append({
                 "slideNumber": slide_number,
-                "location": f"Slide {slide_number}",
+                "shapeId": shape_id,
+                "shapeName": shape_name,
                 "issue": "Image missing alt text",
-                "type": "image"
+                "type": "imageAltMissing"
             })
-    
+
+        # 2. Decorative images
+        elif is_decorative:
+            continue
+
+        # 3. Too long alt text
+        elif len(alt_text) > ALT_TEXT_MAX:
+            issues.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "issue": f"Alt text exceeds {ALT_TEXT_MAX} characters",
+                "type": "imageAltTooLong",
+                "length": len(alt_text),
+                "max": ALT_TEXT_MAX
+            })
+
+        elif alt_text_clean in ["image", "picture", "photo"]:
+            issues.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "issue": "Alt text is too generic",
+                "type": "imageAltTooGeneric"
+            })
+
     return issues
 
-# ---------- DOWNLOAD ROUTES ----------
-# @app.get("/download/{filename}")
-# def download_file(filename: str):
-#     """
-#     Direct download by filename from /output.
-#     """
-#     file_path = OUTPUT_DIR / filename
-#     if not file_path.exists():
-#         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+def escape_xml_attr(s: str) -> str:
+    return (s.replace("&", "&amp;")
+             .replace('"', "&quot;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;"))
 
-#     return FileResponse(
-#         path=str(file_path),
-#         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-#         filename=filename
-#     )
+def choose_default_alt(shape_name: str, slide_number: int) -> str:
+    """
+    Heuristic:
+    - If it looks decorative (name hints), set "decorative"
+    - Otherwise set a non-generic placeholder
+    """
+    n = (shape_name or "").lower()
+    decorative_hints = ["background", "bg", "decor", "decoration", "border", "divider", "logo", "icon", "watermark"]
+    if any(h in n for h in decorative_hints):
+        return "decorative"
+    return f"Image on slide {slide_number}"
+
+def remediate_slide_alt_text(slide_xml: str, slide_number: int):
+    """
+    Returns: (new_xml, fixed_count, fix_details)
+    Fix rules:
+      - Missing descr -> add descr (decorative or placeholder)
+      - descr > 250 -> truncate
+      - descr is generic image/picture/photo -> replace with placeholder
+    """
+    fixed = 0
+    fix_details = []
+
+    pic_pattern = r'<p:pic[\s\S]*?</p:pic>'
+    pics = re.findall(pic_pattern, slide_xml)
+
+    # If no pics, return unchanged
+    if not pics:
+        return slide_xml, 0, []
+
+    new_xml = slide_xml
+
+    for pic_xml in pics:
+        # Extract cNvPr attrs
+        cnvpr_pattern = r'<p:cNvPr([^>]*)/?>'
+        m = re.search(cnvpr_pattern, pic_xml)
+        attrs = m.group(1) if m else ""
+
+        def get_attr(attr_name: str) -> str:
+            am = re.search(rf'{attr_name}="([^"]*)"', attrs)
+            return am.group(1) if am else ""
+
+        shape_id = get_attr("id")
+        shape_name = get_attr("name")
+        alt_text = get_attr("descr")
+        alt_clean = (alt_text or "").strip().lower()
+
+        # Decide what to write (if needed)
+        if not alt_text or alt_text.strip() == "":
+            new_alt = choose_default_alt(shape_name, slide_number)
+            fixed += 1
+            fix_details.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "fix": "addedAltText",
+                "altText": new_alt
+            })
+            # update in the FULL slide XML by matching the cNvPr with this id
+            new_xml = set_cnvpr_descr(new_xml, shape_id, new_alt)
+
+        elif len(alt_text) > ALT_TEXT_MAX:
+            new_alt = alt_text[:ALT_TEXT_MAX]
+            fixed += 1
+            fix_details.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "fix": "truncatedAltText",
+                "altText": new_alt
+            })
+            new_xml = set_cnvpr_descr(new_xml, shape_id, new_alt)
+
+        elif alt_clean in ["image", "picture", "photo"]:
+            new_alt = f"Image on slide {slide_number}"
+            fixed += 1
+            fix_details.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "fix": "replacedGenericAltText",
+                "altText": new_alt
+            })
+            new_xml = set_cnvpr_descr(new_xml, shape_id, new_alt)
+
+    return new_xml, fixed, fix_details
+
+def set_cnvpr_descr(full_slide_xml: str, shape_id: str, new_alt: str) -> str:
+    """
+    Sets/updates descr="..." on the <p:cNvPr ... id="{shape_id}" ...> element.
+    Works for both self-closing (<p:cNvPr ... />) and normal (<p:cNvPr ...>).
+    """
+    if not shape_id:
+        return full_slide_xml
+
+    escaped = escape_xml_attr(new_alt)
+
+    # 1) Replace existing descr if present
+    pattern_has_descr = rf'(<p:cNvPr\b[^>]*\bid="{re.escape(shape_id)}"[^>]*\bdescr=")([^"]*)(")'
+    if re.search(pattern_has_descr, full_slide_xml):
+        return re.sub(pattern_has_descr, rf'\1{escaped}\3', full_slide_xml)
+
+    # 2) Inject descr before the tag closes (handles .../> and ...>)
+    pattern_inject = rf'(<p:cNvPr\b[^>]*\bid="{re.escape(shape_id)}"[^>]*?)(\s*/?>)'
+    return re.sub(pattern_inject, rf'\1 descr="{escaped}"\2', full_slide_xml, count=1)
+
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+def set_alt_text_in_slide_xml(slide_xml_bytes: bytes, slide_number: int):
+    """
+    Finds all picture cNvPr nodes and fixes their 'descr' safely.
+    Returns: (new_xml_bytes, fixed_count, fix_details)
+    """
+    parser = etree.XMLParser(remove_blank_text=False, recover=False)
+    root = etree.fromstring(slide_xml_bytes, parser=parser)
+
+    ns = {"p": P_NS}
+
+    fixed = 0
+    fix_details = []
+
+    # Pictures: p:pic -> p:nvPicPr -> p:cNvPr
+    for cnvpr in root.xpath(".//p:pic/p:nvPicPr/p:cNvPr", namespaces=ns):
+        shape_id = cnvpr.get("id") or ""
+        shape_name = cnvpr.get("name") or ""
+        descr = cnvpr.get("descr")  # can be None
+
+        # Decide if we need a fix
+        if descr is None or descr.strip() == "":
+            new_alt = choose_default_alt(shape_name, slide_number)  # your existing function
+            cnvpr.set("descr", new_alt)
+            fixed += 1
+            fix_details.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "fix": "addedAltText",
+                "altText": new_alt
+            })
+
+        elif len(descr) > ALT_TEXT_MAX:
+            new_alt = descr[:ALT_TEXT_MAX]
+            cnvpr.set("descr", new_alt)
+            fixed += 1
+            fix_details.append({
+                "slideNumber": slide_number,
+                "shapeId": shape_id,
+                "shapeName": shape_name,
+                "fix": "truncatedAltText",
+                "altText": new_alt
+            })
+
+        else:
+            d = descr.strip().lower()
+            if d in ["image", "picture", "photo"]:
+                new_alt = f"Image on slide {slide_number}"
+                cnvpr.set("descr", new_alt)
+                fixed += 1
+                fix_details.append({
+                    "slideNumber": slide_number,
+                    "shapeId": shape_id,
+                    "shapeName": shape_name,
+                    "fix": "replacedGenericAltText",
+                    "altText": new_alt
+                })
+
+    new_bytes = etree.tostring(
+        root,
+        xml_declaration=True,
+        encoding="UTF-8",
+        standalone=None
+    )
+    return new_bytes, fixed, fix_details
+
+def remediate_alt_text_pptx(src_pptx: Path, dst_pptx: Path):
+    fixed_total = 0
+    all_fix_details = []
+
+    with zipfile.ZipFile(src_pptx, "r") as zin, zipfile.ZipFile(dst_pptx, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+
+            m = re.match(r"ppt/slides/slide(\d+)\.xml$", item.filename)
+            if m:
+                slide_num = int(m.group(1))
+                try:
+                    new_data, fixed, details = set_alt_text_in_slide_xml(data, slide_num)
+                    if fixed:
+                        data = new_data
+                        fixed_total += fixed
+                        all_fix_details.extend(details)
+                except Exception:
+                    # If parsing fails, leave slide unchanged rather than corrupting the file
+                    pass
+
+            zout.writestr(item, data)
+
+    return fixed_total, all_fix_details
 
 @app.get("/download")
 def download_latest_get():
