@@ -1,0 +1,56 @@
+{
+  "fileName": "6-presentation-bottomrow.pptx",
+  "suggestedFileName": "6-presentation-bottomrow.pptx",
+  "report": {
+    "fileName": "6-presentation-bottomrow.pptx",
+    "suggestedFileName": "6-presentation-bottomrow.pptx",
+    "summary": {
+      "fixed": 0,
+      "flagged": 6
+    },
+    "details": {
+      "titleNeedsFixing": false,
+      "slidesMissingTitles": [
+        {
+          "missing": true,
+          "slideNumber": 1,
+          "message": "Slide 1 is missing a title"
+        },
+        {
+          "missing": true,
+          "slideNumber": 2,
+          "message": "Slide 2 is missing a title"
+        },
+        {
+          "missing": true,
+          "slideNumber": 3,
+          "message": "Slide 3 is missing a title"
+        }
+      ],
+      "imagesMissingOrBadAlt": [
+        {
+          "slideNumber": 1,
+          "location": "Slide 1",
+          "issue": "Image missing alt text",
+          "type": "image"
+        },
+        {
+          "slideNumber": 2,
+          "location": "Slide 2",
+          "issue": "Image missing alt text",
+          "type": "image"
+        },
+        {
+          "slideNumber": 3,
+          "location": "Slide 3",
+          "issue": "Image missing alt text",
+          "type": "image"
+        }
+      ],
+      "gifsDetected": [],
+      "fileNameNeedsFixing": false,
+      "hiddenSlidesDetected": [],
+      "listFormattingIssues": []
+    }
+  }
+}

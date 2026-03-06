@@ -1,0 +1,3 @@
+# Environment files (optional - only needed for customization)
+.env
+.env.local
