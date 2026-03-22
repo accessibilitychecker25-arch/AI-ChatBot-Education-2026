@@ -23,3 +23,11 @@ node autotag-pdf.js
 git push 
 
 #we can review pull requests as a team to identify if things are  good for merge.
+----------------------------------------------------------------------------
+# Set Up the Virtual Environment
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install fastapi uvicorn lxml python-multipart
+# Run the Server
+From the python-server folder, start the backend:
+uvicorn server2:app --reload --port 5000
