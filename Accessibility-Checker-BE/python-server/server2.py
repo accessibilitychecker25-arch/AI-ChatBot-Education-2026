@@ -33,7 +33,7 @@ try:
         print("✅ Local AI vision model loaded (BLIP - 100% FREE, No Costs)")
     else:
         print("⚠️  Local AI model not ready yet (will download on first use)")
-except ImportError as e:
+except Exception as e:  # Catch ALL errors (like NameError from missing torch)
     print(f"⚠️  AI vision module not available: {e}")
     print("ℹ️  Will use placeholder alt text")
 
@@ -97,11 +97,6 @@ def convert_legacy_ppt_to_pptx_powerpoint(src_path: Path, out_dir: Path) -> Path
     out_dir.mkdir(parents=True, exist_ok=True)
     dst_path = out_dir / f"{src_path.stem}.pptx"
 
-    # try:
-    #     import win32com.client  # type: ignore
-    # except Exception as e:
-    #     raise RuntimeError(f"pywin32 not available: {e}")
-
     pp = win32com.client.Dispatch("PowerPoint.Application")
     pp.Visible = 1
 
@@ -159,18 +154,11 @@ async def upload_files(
             detail="No file uploaded. Send multipart/form-data with one of: files, file, pptxFile, docxFile"
         )
 
-    # if len(incoming) > 10:
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail=f"Too many files. You uploaded {len(incoming)}, but the limit is 10."
-    #     )
-
     # For now handle single file
     up = incoming[0]
     filename = up.filename or "unnamed.pptx"
     filename_lower = filename.lower()
 
-    # allowed_ext = (".pptx", ".ppt", ".pps", ".potx")
     allowed_ext = (".pptx", ".ppt", ".pps", ".pot", ".potx", ".ppsx")
 
     if not filename_lower.endswith(allowed_ext):
@@ -195,8 +183,7 @@ async def upload_files(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
-    # Stage output file (copy for now)
-    # Stage output file (NOW: remediate alt text into the output pptx)
+    # Stage output file (NOW: remediate alt text and titles into the output pptx)
     try:
         base = Path(filename).stem
         if base.startswith("remediated-"):
@@ -205,12 +192,10 @@ async def upload_files(
             out_name = f"remediated-{base}.pptx"
         out_path = OUTPUT_DIR / out_name
 
-        # fixed_count, fix_details = remediate_alt_text_pptx(file_location, out_path)
         fixed_count, fix_details = remediate_alt_text_pptx(pptx_input, out_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to remediate alt text: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to remediate file: {str(e)}")
 
-    # Analyze & respond
     # Analyze & respond (analyze the REMEDIATED file)
     try:
         report = analyze_powerpoint(out_path, out_name)
@@ -223,112 +208,6 @@ async def upload_files(
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to analyze file: {str(e)}")
-
-# @app.post("/upload")
-# async def upload_files(
-#     # Accept ANY of these common multipart field names:
-#     files: Optional[List[UploadFile]] = File(default=None),
-#     file: Optional[UploadFile] = File(default=None),
-#     pptxFile: Optional[UploadFile] = File(default=None),
-#     docxFile: Optional[UploadFile] = File(default=None),
-# ):
-#     """
-#     Accepts PowerPoint files, analyzes them, and returns accessibility report.
-#     Compatible with FE sending: files[] OR file OR pptxFile OR docxFile.
-#     """
-
-#     # ---- normalize inputs into one list ----
-#     incoming: List[UploadFile] = []
-#     if files:
-#         incoming.extend(files)
-#     if file:
-#         incoming.append(file)
-#     if pptxFile:
-#         incoming.append(pptxFile)
-#     if docxFile:
-#         incoming.append(docxFile)
-
-#     if not incoming:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="No file uploaded. Send multipart/form-data with one of: files, file, pptxFile, docxFile"
-#         )
-
-#     # if len(incoming) > 10:
-#     #     raise HTTPException(
-#     #         status_code=400,
-#     #         detail=f"Too many files. You uploaded {len(incoming)}, but the limit is 10."
-#     #     )
-
-#     # For now handle single file (same as your current logic)
-#     up = incoming[0]
-#     filename = up.filename or "unnamed.pptx"
-#     filename_lower = filename.lower()
-
-#     allowed_ext = (".pptx", ".ppt", ".pps", ".pot", ".potx", ".ppsx")
-#     if not filename_lower.endswith(allowed_ext):
-#         raise HTTPException(status_code=400, detail="Invalid file type")
-
-#     file_location = UPLOAD_DIR / filename
-#     with file_location.open("wb") as buffer:
-#         shutil.copyfileobj(up.file, buffer)
-
-#     ext = Path(filename_lower).suffix
-
-#     # Make a per-upload converted folder (prevents collisions)
-#     converted_dir = UPLOAD_DIR / "converted" / uuid.uuid4().hex[:8]
-#     converted_dir.mkdir(parents=True, exist_ok=True)
-
-#     if ext in [".ppt", ".pps", ".pot"]:
-#         # Windows: PowerPoint first; otherwise LibreOffice
-#         pptx_input = convert_legacy_to_pptx(file_location, converted_dir)
-#     else:
-#         pptx_input = file_location  # already OpenXML
-
-#     # Save upload
-#     try:
-#         file_location = UPLOAD_DIR / filename
-#         with file_location.open("wb") as buffer:
-#             shutil.copyfileobj(up.file, buffer)
-            
-#         ext = Path(filename_lower).suffix
-#         converted_dir = UPLOAD_DIR / "converted"
-
-#         if ext in [".ppt", ".pps", ".pot"]:
-#             pptx_input = convert_legacy_ppt_to_pptx_powerpoint(file_location, converted_dir)
-#         else:
-#             pptx_input = file_location
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-
-#     # Stage output file (copy for now)
-#     # Stage output file (NOW: remediate alt text into the output pptx)
-#     try:
-#         base = Path(filename).stem
-#         if base.startswith("remediated-"):
-#             out_name = f"{base}.pptx"
-#         else:
-#             out_name = f"remediated-{base}.pptx"
-#         out_path = OUTPUT_DIR / out_name
-
-#         # fixed_count, fix_details = remediate_alt_text_pptx(file_location, out_path)
-#         fixed_count, fix_details = remediate_alt_text_pptx(pptx_input, out_path)
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Failed to remediate alt text: {str(e)}")
-
-#     # Analyze & respond
-#     # Analyze & respond (analyze the REMEDIATED file)
-#     try:
-#         report = analyze_powerpoint(out_path, out_name)
-#         report["summary"]["fixed"] += fixed_count
-#         report["details"]["autoFixedAltText"] = fix_details
-#         return JSONResponse(content={
-#             "fileName": filename,
-#             "suggestedFileName": out_name,
-#             "report": report
-#         })
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Failed to analyze file: {str(e)}")
 
 def analyze_powerpoint(file_path: Path, filename: str):
     """
@@ -413,7 +292,6 @@ def analyze_powerpoint(file_path: Path, filename: str):
 
     return report
 
-
 def check_slide_title(slide_xml: str, slide_number: int):
     """Check if slide has a title."""
     # Look for title placeholder
@@ -440,7 +318,6 @@ def check_slide_title(slide_xml: str, slide_number: int):
     
     return {"missing": False}
 
-
 def check_list_formatting(slide_xml: str, slide_number: int):
     """Check for hyphenated paragraphs that should be lists."""
     issues = []
@@ -460,7 +337,6 @@ def check_list_formatting(slide_xml: str, slide_number: int):
             })
     
     return issues
-
 
 ALT_TEXT_MAX = 250
 
@@ -543,81 +419,6 @@ def choose_default_alt(shape_name: str, slide_number: int) -> str:
         return "decorative"
     return f"Image on slide {slide_number}"
 
-def remediate_slide_alt_text(slide_xml: str, slide_number: int):
-    """
-    Returns: (new_xml, fixed_count, fix_details)
-    Fix rules:
-      - Missing descr -> add descr (decorative or placeholder)
-      - descr > 250 -> truncate
-      - descr is generic image/picture/photo -> replace with placeholder
-    """
-    fixed = 0
-    fix_details = []
-
-    pic_pattern = r'<p:pic[\s\S]*?</p:pic>'
-    pics = re.findall(pic_pattern, slide_xml)
-
-    # If no pics, return unchanged
-    if not pics:
-        return slide_xml, 0, []
-
-    new_xml = slide_xml
-
-    for pic_xml in pics:
-        # Extract cNvPr attrs
-        cnvpr_pattern = r'<p:cNvPr([^>]*)/?>'
-        m = re.search(cnvpr_pattern, pic_xml)
-        attrs = m.group(1) if m else ""
-
-        def get_attr(attr_name: str) -> str:
-            am = re.search(rf'{attr_name}="([^"]*)"', attrs)
-            return am.group(1) if am else ""
-
-        shape_id = get_attr("id")
-        shape_name = get_attr("name")
-        alt_text = get_attr("descr")
-        alt_clean = (alt_text or "").strip().lower()
-
-        # Decide what to write (if needed)
-        if not alt_text or alt_text.strip() == "":
-            new_alt = choose_default_alt(shape_name, slide_number)
-            fixed += 1
-            fix_details.append({
-                "slideNumber": slide_number,
-                "shapeId": shape_id,
-                "shapeName": shape_name,
-                "fix": "addedAltText",
-                "altText": new_alt
-            })
-            # update in the FULL slide XML by matching the cNvPr with this id
-            new_xml = set_cnvpr_descr(new_xml, shape_id, new_alt)
-
-        elif len(alt_text) > ALT_TEXT_MAX:
-            new_alt = alt_text[:ALT_TEXT_MAX]
-            fixed += 1
-            fix_details.append({
-                "slideNumber": slide_number,
-                "shapeId": shape_id,
-                "shapeName": shape_name,
-                "fix": "truncatedAltText",
-                "altText": new_alt
-            })
-            new_xml = set_cnvpr_descr(new_xml, shape_id, new_alt)
-
-        elif alt_clean in ["image", "picture", "photo"]:
-            new_alt = f"Image on slide {slide_number}"
-            fixed += 1
-            fix_details.append({
-                "slideNumber": slide_number,
-                "shapeId": shape_id,
-                "shapeName": shape_name,
-                "fix": "replacedGenericAltText",
-                "altText": new_alt
-            })
-            new_xml = set_cnvpr_descr(new_xml, shape_id, new_alt)
-
-    return new_xml, fixed, fix_details
-
 def set_cnvpr_descr(full_slide_xml: str, shape_id: str, new_alt: str) -> str:
     """
     Sets/updates descr="..." on the <p:cNvPr ... id="{shape_id}" ...> element.
@@ -648,14 +449,6 @@ def extract_image_from_pptx_slide(
 ) -> Optional[bytes]:
     """
     Extract image data from PowerPoint using relationship ID
-    
-    Args:
-        pptx_path: Path to the PowerPoint file
-        slide_number: Slide number (1-indexed)
-        rel_id: Relationship ID (e.g., 'rId2')
-        
-    Returns:
-        Image bytes or None if not found
     """
     try:
         with zipfile.ZipFile(pptx_path, 'r') as zip_ref:
@@ -668,7 +461,6 @@ def extract_image_from_pptx_slide(
             rels_xml = zip_ref.read(rels_path).decode('utf-8')
             
             # Find the target for this relationship ID
-            # <Relationship Id="rId2" Target="../media/image1.png" />
             pattern = rf'<Relationship[^>]*Id="{re.escape(rel_id)}"[^>]*Target="([^"]*)"[^>]*/>'
             match = re.search(pattern, rels_xml)
             
@@ -693,13 +485,6 @@ def extract_image_from_pptx_slide(
 def get_image_rel_id_for_pic(pic_element, namespaces: dict) -> Optional[str]:
     """
     Extract the relationship ID for an image from a p:pic element
-    
-    Args:
-        pic_element: The p:pic XML element
-        namespaces: XML namespaces dict
-        
-    Returns:
-        Relationship ID (e.g., 'rId2') or None
     """
     try:
         # Navigate: p:pic -> p:blipFill -> a:blip[@r:embed]
@@ -719,13 +504,6 @@ def set_alt_text_in_slide_xml(
     """
     Finds all picture cNvPr nodes and fixes their 'descr' safely.
     Uses FREE local AI for intelligent alt text generation.
-    
-    Args:
-        slide_xml_bytes: The slide XML as bytes
-        slide_number: Slide number (1-indexed)
-        pptx_path: Path to the PowerPoint file (needed for AI image extraction)
-        
-    Returns: (new_xml_bytes, fixed_count, fix_details)
     """
     parser = etree.XMLParser(remove_blank_text=False, recover=False)
     root = etree.fromstring(slide_xml_bytes, parser=parser)
@@ -845,6 +623,7 @@ def set_alt_text_in_slide_xml(
                     "altText": new_alt,
                     "aiGenerated": use_ai and rel_id is not None
                 })
+                
     new_bytes = etree.tostring(
         root,
         xml_declaration=True,
@@ -853,9 +632,95 @@ def set_alt_text_in_slide_xml(
     )
     return new_bytes, fixed, fix_details
 
+def remediate_duplicate_title_xml(
+    slide_xml_bytes: bytes, 
+    slide_number: int, 
+    seen_titles: dict
+) -> tuple[bytes, int, list]:
+    """
+    Finds the title of the slide, checks if it has been seen before.
+    If it's a duplicate, appends ' (Part X)' to the title text.
+    """
+    # recover=True helps parse stubborn PowerPoint files
+    parser = etree.XMLParser(remove_blank_text=False, recover=True)
+    root = etree.fromstring(slide_xml_bytes, parser=parser)
+
+    ns = {
+        "p": P_NS,
+        "a": A_NS
+    }
+
+    fixed = 0
+    fix_details = []
+
+    # UPGRADE: Broadened the search to include idx='0' (PowerPoint's default title placeholder)
+    title_shapes = root.xpath(".//p:sp[.//p:ph[@type='title' or @type='ctrTitle' or @idx='0']]", namespaces=ns)
+    
+    for shape in title_shapes:
+        # Get all text runs inside this shape
+        text_nodes = shape.xpath(".//a:t", namespaces=ns)
+        if not text_nodes:
+            continue
+
+        # Concatenate all text runs to get the full title
+        full_title = "".join([node.text for node in text_nodes if node.text]).strip()
+        
+        if not full_title:
+            continue
+
+        # UPGRADE: Lowercase the title for strict comparison ("Title" == "title ")
+        title_key = full_title.lower()
+
+        if title_key in seen_titles:
+            seen_titles[title_key] += 1
+            new_part_num = seen_titles[title_key]
+            suffix = f" (Part {new_part_num})"
+            
+            # Append the suffix safely to the LAST text node
+            last_node = text_nodes[-1]
+            last_node.text = (last_node.text or "") + suffix
+            
+            # LOG TO TERMINAL: So we can see it working!
+            print(f"  ✅ Renamed duplicate title on Slide {slide_number}: '{full_title}' -> '{full_title}{suffix}'")
+            
+            fixed += 1
+            fix_details.append({
+                "slideNumber": slide_number,
+                "fix": "appendedDuplicateTitleSuffix",
+                "oldTitle": full_title,
+                "newTitle": full_title + suffix
+            })
+        else:
+            # First time seeing this title
+            seen_titles[title_key] = 1
+            # LOG TO TERMINAL: Track what titles are being found
+            print(f"  📝 Registered title on Slide {slide_number}: '{full_title}'")
+
+    # If we made a fix, convert back to bytes
+    if fixed > 0:
+        # UPGRADE: Explicitly register namespaces so PowerPoint doesn't corrupt the file!
+        etree.register_namespace("p", P_NS)
+        etree.register_namespace("a", A_NS)
+        etree.register_namespace("r", R_NS)
+        
+        new_bytes = etree.tostring(
+            root,
+            xml_declaration=True,
+            encoding="UTF-8",
+            standalone=True
+        )
+        return new_bytes, fixed, fix_details
+        
+    return slide_xml_bytes, 0, []
+
+def get_slide_num(filename: str) -> int:
+    """Helper function to properly sort slide1.xml, slide2.xml ... slide10.xml"""
+    m = re.match(r"ppt/slides/slide(\d+)\.xml$", filename)
+    return int(m.group(1)) if m else 9999
+
 def remediate_alt_text_pptx(src_pptx: Path, dst_pptx: Path):
     """
-    Remediate alt text in PowerPoint file using AI-powered descriptions
+    Remediate alt text AND duplicate slide titles in PowerPoint file
     
     Args:
         src_pptx: Source PowerPoint file path
@@ -864,30 +729,49 @@ def remediate_alt_text_pptx(src_pptx: Path, dst_pptx: Path):
     Returns:
         Tuple of (fixed_count, fix_details)
     """
-    fixed_total = 0
+    fixed_total_alt = 0
+    fixed_total_titles = 0
     all_fix_details = []
     
-    print(f"\n🔧 Starting alt text remediation for: {src_pptx.name}")
+    seen_titles = {} # Dictionary to track slide titles globally across the PPTX
+    
+    print(f"\n🔧 Starting remediation for: {src_pptx.name}")
     print(f"   AI Mode: {os.getenv('ENABLE_AI_ALT_TEXT', 'true')}")
 
     with zipfile.ZipFile(src_pptx, "r") as zin, zipfile.ZipFile(dst_pptx, "w", compression=zipfile.ZIP_DEFLATED) as zout:
-        for item in zin.infolist():
+        
+        # UPGRADE: Sort by actual integer so slide 10 doesn't process before slide 2!
+        items = sorted(zin.infolist(), key=lambda x: get_slide_num(x.filename))
+        
+        for item in items:
             data = zin.read(item.filename)
 
             m = re.match(r"ppt/slides/slide(\d+)\.xml$", item.filename)
             if m:
                 slide_num = int(m.group(1))
                 try:
-                    # Pass the source pptx path for AI image extraction
-                    new_data, fixed, details = set_alt_text_in_slide_xml(
+                    # 1. Remediate Alt Text
+                    new_data, fixed_alt, details_alt = set_alt_text_in_slide_xml(
                         data,
                         slide_num,
                         pptx_path=src_pptx
                     )
-                    if fixed:
+                    if fixed_alt:
                         data = new_data
-                        fixed_total += fixed
-                        all_fix_details.extend(details)
+                        fixed_total_alt += fixed_alt
+                        all_fix_details.extend(details_alt)
+                        
+                    # 2. Remediate Duplicate Titles
+                    new_data, fixed_title, details_title = remediate_duplicate_title_xml(
+                        data, 
+                        slide_num, 
+                        seen_titles
+                    )
+                    if fixed_title:
+                        data = new_data
+                        fixed_total_titles += fixed_title
+                        all_fix_details.extend(details_title)
+
                 except Exception as e:
                     # If parsing fails, leave slide unchanged rather than corrupting the file
                     print(f"  ⚠️  Error processing slide {slide_num}: {e}")
@@ -895,12 +779,13 @@ def remediate_alt_text_pptx(src_pptx: Path, dst_pptx: Path):
 
             zout.writestr(item, data)
     
-    print(f"\n✅ Remediation complete: {fixed_total} images processed")
+    print(f"\n✅ Remediation complete: {fixed_total_alt} images, {fixed_total_titles} titles processed")
     ai_count = sum(1 for d in all_fix_details if d.get('aiGenerated', False))
     if ai_count > 0:
         print(f"   🤖 {ai_count} alt texts generated by FREE local AI (no cost)")
 
-    return fixed_total, all_fix_details
+    total_fixes = fixed_total_alt + fixed_total_titles
+    return total_fixes, all_fix_details
 
 @app.get("/download")
 def download_latest_get():
@@ -915,45 +800,6 @@ def download_latest_get():
         filename=file_path.name
     )
 
-# @app.post("/download")
-# async def download_latest(request: Request):
-#     """
-#     Accepts POST /download from whatever the frontend sends.
-#     If body is JSON and contains {"filename": "..."} -> use it.
-#     Otherwise -> return newest file from /output.
-#     """
-#     filename = None
-
-#     body = await request.body()  # raw bytes
-
-#     # Try to parse JSON only if it seems like JSON
-#     if body:
-#         try:
-#             text = body.decode("utf-8")
-#             data = json.loads(text)
-#             if isinstance(data, dict):
-#                 filename = data.get("filename")
-#         except Exception:
-#             # not JSON / not utf-8 -> ignore and fall back to newest output file
-#             pass
-
-#     if filename:
-#         file_path = OUTPUT_DIR / filename
-#         if not file_path.exists():
-#             raise HTTPException(status_code=404, detail=f"File not found: {filename}")
-#     else:
-#         candidates = [p for p in OUTPUT_DIR.glob("*") if p.is_file()]
-#         if not candidates:
-#             raise HTTPException(status_code=404, detail="No files available to download yet.")
-#         file_path = max(candidates, key=lambda p: p.stat().st_mtime)
-#         filename = file_path.name
-
-#     return FileResponse(
-#         path=str(file_path),
-#         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-#         filename=filename
-#     )
-    
 @app.post("/download")
 async def download_latest_post(request: Request):
     filename = None
