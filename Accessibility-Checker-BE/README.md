@@ -26,7 +26,9 @@ git push
 ----------------------------------------------------------------------------
 # Set Up the Virtual Environment
 python -m venv .venv
+
 .\.venv\Scripts\activate
+
 pip install fastapi uvicorn lxml python-multipart
 # Run the Server
 From the python-server folder, start the backend:
