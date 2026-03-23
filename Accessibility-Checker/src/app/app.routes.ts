@@ -3,6 +3,7 @@ import { LoginComponent } from './login/login.component';
 import { DashboardComponent } from './dashboard/dashboard.component';
 import { MainLayoutComponent } from './main-layout/main-layout.component';
 import { AboutComponent } from './about/about.component';
+import { BatchUploadComponent } from './batch-upload/batch-upload.component';
 import { AuthGuard } from './auth.guard';
 
 export const appRoutes: Routes = [
@@ -14,6 +15,7 @@ export const appRoutes: Routes = [
     children: [
       { path: 'dashboard', component: DashboardComponent },
       { path: 'about', component: AboutComponent },
+      { path: 'batch-upload', component: BatchUploadComponent },
     ],
   },
 ];
