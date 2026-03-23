@@ -454,17 +454,43 @@ export class DashboardComponent {
             this.progress = Math.round(
               (100 * event.loaded) / (event.total ?? 1),
             );
+          // } else if (event.type === HttpEventType.Response) {
+          //   const res = (event as HttpResponse<any>)
+          //     .body as DocxRemediationResponse;
+          //   this.remediation = res;
+          //   this.fileName = res.suggestedFileName ? res.suggestedFileName : "remediated.pptx";
+          //   this.issues = this.flattenIssues(res);
+
+          //   // Save processed report so the user can inspect it individually later (include original file)
+          //   try {
+          //     if (res && res.report) this.processedReports.push({ response: res, original: file });
+          //   } catch (e) {}
+          //   this.isUploading = false;
+          // }
           } else if (event.type === HttpEventType.Response) {
-            const res = (event as HttpResponse<any>)
-              .body as DocxRemediationResponse;
+            const body = (event as HttpResponse<any>).body;
+
+            const res =
+              body?.files && Array.isArray(body.files) && body.files.length
+                ? body.files[0]
+                : body;
+
+            if (!res || !res.report) {
+              this.isUploading = false;
+              this.issues = [
+                { type: 'flagged', message: 'Unexpected upload response from server.' },
+              ];
+              return;
+            }
+
             this.remediation = res;
-            this.fileName = res.suggestedFileName ? res.suggestedFileName : "remediated.pptx";
+            this.fileName = res.suggestedFileName || 'remediated.pptx';
             this.issues = this.flattenIssues(res);
 
-            // Save processed report so the user can inspect it individually later (include original file)
             try {
-              if (res && res.report) this.processedReports.push({ response: res, original: file });
-            } catch (e) {}
+              this.processedReports.push({ response: res, original: file });
+            } catch {}
+
             this.isUploading = false;
           }
         },
@@ -923,137 +949,209 @@ export class DashboardComponent {
     return out;
   }
 
+  // downloadFixed() {
+  //   const downloadUrl = `${environment.apiUrl}${environment.downloadEndpoint}`;
+
+  //   if (!this.selectedFile) {
+  //     console.error('No file selected for download');
+  //     return; // Early return if no file is selected
+  //   }
+  //   // Prepare form data to send file to the server
+  //   const formData = new FormData();
+  //   formData.append('file', this.selectedFile); // Add the file object
+
+  //   // Send POST request with file object
+  //   this.http
+  //     .post(downloadUrl, formData, {
+  //       responseType: 'blob',
+  //       observe: 'response',
+  //     })
+  //     .subscribe({
+  //       next: (response: HttpResponse<Blob>) => {
+  //         // Check if the response body is not null
+  //         const blob = response.body;
+  //         if (!blob) {
+  //           console.error('Error: Empty response body');
+  //           return;
+  //         }
+
+  //         const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+  //         // If server returned JSON (error payload), parse and show a user message
+  //         if (contentType.includes('application/json')) {
+  //           // blob.text() returns a promise with the JSON string
+  //           blob.text().then((txt) => {
+  //             try {
+  //               const payload = JSON.parse(txt);
+  //               this.issues = [
+  //                 { type: 'flagged', message: payload?.error || 'Server error during remediation' },
+  //               ];
+  //             } catch (e) {
+  //               this.issues = [
+  //                 { type: 'flagged', message: 'Unexpected server response during remediation.' },
+  //               ];
+  //             }
+  //           });
+  //           return;
+  //         }
+
+  //         // Extract filename from Content-Disposition header (supports filename and filename*=)
+  //         const contentDisposition = response.headers.get('content-disposition') || response.headers.get('Content-Disposition') || '';
+  //         let filename = 'remediated-document.docx'; // default
+
+  //         if (contentDisposition) {
+  //           // Try filename*=UTF-8''name.docx first
+  //           const fstar = contentDisposition.match(/filename\*=[^']*''([^;\n\r]+)/i);
+  //           if (fstar && fstar[1]) {
+  //             try {
+  //               filename = decodeURIComponent(fstar[1]);
+  //             } catch (e) {
+  //               filename = fstar[1];
+  //             }
+  //           } else {
+  //             const matches = /filename=\s*"?([^";]+)"?/i.exec(contentDisposition);
+  //             if (matches && matches[1]) filename = matches[1];
+  //           }
+  //         }
+
+  //         // Store the filename for display purposes
+  //         this.downloadFileName = filename;
+
+  //         // Note: do not mutate the server-provided summary here. The UI shows a
+  //         // client-estimated auto-fix count with `countAutoFixableIssues()` and
+  //         // we perform an authoritative re-check immediately after download that
+  //         // replaces the report with the server's post-remediation response.
+
+  //         // Create download link with the correct filename
+  //         const url = URL.createObjectURL(blob);
+  //         const a = document.createElement('a');
+  //         a.href = url;
+  //         a.download = filename; // Use the filename from the header
+  //         a.click();
+  //         URL.revokeObjectURL(url);
+
+  //         // If the original report said the document was protected, show a post-download banner
+  //         // with alternatives and a button to open the unblock help modal.
+  //         if (this.remediation?.report?.details?.documentProtected) {
+  //           this.showPostDownloadBanner = true;
+  //         }
+          
+  //         const isPptx = filename.toLowerCase().endsWith('.pptx');
+  //         if (isPptx) return;
+  //         // Authoritative re-check: send the downloaded blob back to the upload analysis endpoint
+  //         // so the UI shows the exact server-side post-remediation report (avoids client heuristics).
+  //         try {
+  //           const analysisUrl = `${environment.apiUrl}${environment.uploadEndpoint}`;
+  //           const reForm = new FormData();
+  //           // Append blob as a file; use the filename determined above so server sees correct name
+  //           reForm.append('file', blob, filename);
+
+  //           this.http.post(analysisUrl, reForm).subscribe({
+  //             next: (resp: any) => {
+  //               // Replace remediation with authoritative server response and re-render issues
+  //               try {
+  //                 const res = resp as DocxRemediationResponse;
+  //                 if (res && res.report) {
+  //                   this.remediation = res;
+  //                   this.fileName = res.suggestedFileName ? res.suggestedFileName : filename;
+  //                   this.issues = this.flattenIssues(res);
+  //                   // Hide post-download banner if server confirms protection removed
+  //                   if (!this.remediation.report.details?.documentProtected) {
+  //                     this.showPostDownloadBanner = false;
+  //                   }
+  //                 }
+  //               } catch (e) {
+  //                 console.warn('Failed to parse authoritative report', e);
+  //               }
+  //             },
+  //             error: (err) => {
+  //               console.warn('Authoritative re-check failed', err);
+  //               // keep existing remediation but surface a message
+  //               this.issues = [
+  //                 { type: 'flagged', message: `Could not refresh authoritative report: ${err?.message || err?.statusText || 'error'}` },
+  //               ];
+  //             },
+  //           });
+  //         } catch (e) {
+  //           console.warn('Authoritative re-check error', e);
+  //         }
+  //       },
+  //       error: (err) => {
+  //         console.error('Download failed', err);
+  //         this.issues = [
+  //           { type: 'flagged', message: `Download failed: ${err?.error?.message || err.statusText || err.message || 'Unknown error'}` },
+  //         ];
+  //       },
+  //     });
+  // }
+
   downloadFixed() {
     const downloadUrl = `${environment.apiUrl}${environment.downloadEndpoint}`;
 
-    if (!this.selectedFile) {
-      console.error('No file selected for download');
-      return; // Early return if no file is selected
-    }
-    // Prepare form data to send file to the server
-    const formData = new FormData();
-    formData.append('file', this.selectedFile); // Add the file object
+    const fileName =
+      this.remediation?.suggestedFileName ||
+      this.fileName ||
+      this.downloadFileName;
 
-    // Send POST request with file object
+    if (!fileName) {
+      this.issues = [{ type: 'flagged', message: 'No remediated file available for download.' }];
+      return;
+    }
+
     this.http
-      .post(downloadUrl, formData, {
-        responseType: 'blob',
-        observe: 'response',
-      })
+      .post(
+        downloadUrl,
+        { fileName },
+        {
+          responseType: 'blob',
+          observe: 'response',
+        }
+      )
       .subscribe({
         next: (response: HttpResponse<Blob>) => {
-          // Check if the response body is not null
           const blob = response.body;
           if (!blob) {
-            console.error('Error: Empty response body');
+            this.issues = [{ type: 'flagged', message: 'Empty download response.' }];
             return;
           }
 
-          const contentType = (response.headers.get('content-type') || '').toLowerCase();
+          const contentDisposition =
+            response.headers.get('content-disposition') ||
+            response.headers.get('Content-Disposition') ||
+            '';
 
-          // If server returned JSON (error payload), parse and show a user message
-          if (contentType.includes('application/json')) {
-            // blob.text() returns a promise with the JSON string
-            blob.text().then((txt) => {
-              try {
-                const payload = JSON.parse(txt);
-                this.issues = [
-                  { type: 'flagged', message: payload?.error || 'Server error during remediation' },
-                ];
-              } catch (e) {
-                this.issues = [
-                  { type: 'flagged', message: 'Unexpected server response during remediation.' },
-                ];
-              }
-            });
-            return;
-          }
-
-          // Extract filename from Content-Disposition header (supports filename and filename*=)
-          const contentDisposition = response.headers.get('content-disposition') || response.headers.get('Content-Disposition') || '';
-          let filename = 'remediated-document.docx'; // default
+          let filename = this.cleanName(fileName);
 
           if (contentDisposition) {
-            // Try filename*=UTF-8''name.docx first
             const fstar = contentDisposition.match(/filename\*=[^']*''([^;\n\r]+)/i);
             if (fstar && fstar[1]) {
               try {
-                filename = decodeURIComponent(fstar[1]);
-              } catch (e) {
-                filename = fstar[1];
+                filename = this.cleanName(decodeURIComponent(fstar[1]));
+              } catch {
+                filename = this.cleanName(fstar[1]);
               }
             } else {
               const matches = /filename=\s*"?([^";]+)"?/i.exec(contentDisposition);
-              if (matches && matches[1]) filename = matches[1];
+              if (matches && matches[1]) filename = this.cleanName(matches[1]);
             }
           }
 
-          // Store the filename for display purposes
           this.downloadFileName = filename;
 
-          // Note: do not mutate the server-provided summary here. The UI shows a
-          // client-estimated auto-fix count with `countAutoFixableIssues()` and
-          // we perform an authoritative re-check immediately after download that
-          // replaces the report with the server's post-remediation response.
-
-          // Create download link with the correct filename
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = filename; // Use the filename from the header
+          // a.download = filename;
+          a.download = this.cleanName(fileName);
           a.click();
           URL.revokeObjectURL(url);
-
-          // If the original report said the document was protected, show a post-download banner
-          // with alternatives and a button to open the unblock help modal.
-          if (this.remediation?.report?.details?.documentProtected) {
-            this.showPostDownloadBanner = true;
-          }
-          
-          const isPptx = filename.toLowerCase().endsWith('.pptx');
-          if (isPptx) return;
-          // Authoritative re-check: send the downloaded blob back to the upload analysis endpoint
-          // so the UI shows the exact server-side post-remediation report (avoids client heuristics).
-          try {
-            const analysisUrl = `${environment.apiUrl}${environment.uploadEndpoint}`;
-            const reForm = new FormData();
-            // Append blob as a file; use the filename determined above so server sees correct name
-            reForm.append('file', blob, filename);
-
-            this.http.post(analysisUrl, reForm).subscribe({
-              next: (resp: any) => {
-                // Replace remediation with authoritative server response and re-render issues
-                try {
-                  const res = resp as DocxRemediationResponse;
-                  if (res && res.report) {
-                    this.remediation = res;
-                    this.fileName = res.suggestedFileName ? res.suggestedFileName : filename;
-                    this.issues = this.flattenIssues(res);
-                    // Hide post-download banner if server confirms protection removed
-                    if (!this.remediation.report.details?.documentProtected) {
-                      this.showPostDownloadBanner = false;
-                    }
-                  }
-                } catch (e) {
-                  console.warn('Failed to parse authoritative report', e);
-                }
-              },
-              error: (err) => {
-                console.warn('Authoritative re-check failed', err);
-                // keep existing remediation but surface a message
-                this.issues = [
-                  { type: 'flagged', message: `Could not refresh authoritative report: ${err?.message || err?.statusText || 'error'}` },
-                ];
-              },
-            });
-          } catch (e) {
-            console.warn('Authoritative re-check error', e);
-          }
         },
         error: (err) => {
-          console.error('Download failed', err);
           this.issues = [
-            { type: 'flagged', message: `Download failed: ${err?.error?.message || err.statusText || err.message || 'Unknown error'}` },
+            {
+              type: 'flagged',
+              message: `Download failed: ${err?.error?.detail || err?.message || 'Unknown error'}`,
+            },
           ];
         },
       });
@@ -1139,4 +1237,9 @@ export class DashboardComponent {
   //   if (!this.issues) return 0;
   //   return this.issues.filter(issue => issue.type === 'fixed').length;
   // }
+
+  cleanName(name: string): string {
+    return name.replace(/^[0-9a-f]{8}_/i, '');
+  }
+
 }
