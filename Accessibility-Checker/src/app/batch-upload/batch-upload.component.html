@@ -1,0 +1,402 @@
+<!-- <div class="batch-upload">
+  <h2>📁 Batch PowerPoint Accessibility Checker</h2>
+  <p class="subtitle">Upload up to 10 PowerPoint files at once for accessibility analysis and remediation</p> -->
+
+  <!-- Session Management -->
+  <!-- <div class="session-section" *ngIf="!sessionId">
+    <button class="btn btn-primary" (click)="createSession()">Create Session to Begin</button>
+    <div class="error-message" *ngIf="error">{{ error }}</div>
+  </div> -->
+
+  <!-- Upload Section -->
+  <!-- <div class="upload-section" *ngIf="sessionId">
+    <div class="session-info">
+      <strong>Session ID:</strong> <code>{{ sessionId }}</code>
+    </div> -->
+
+    <!-- <div class="file-input-group">
+      <label for="fileInput" class="file-label">
+        📂 Select PowerPoint Files (Max 10)
+      </label>
+      <input 
+        id="fileInput"
+        type="file" 
+        multiple 
+        accept=".pptx, .ppt, .pps, .pot, .potx, .ppsx" 
+        (change)="onFilesSelected($event)" 
+        class="file-input"
+      /> -->
+      
+      <!-- File List Display -->
+      <!-- <div class="selected-files" *ngIf="files.length">
+        <h4>Selected Files ({{ files.length }}/10):</h4>
+        <ul class="file-list">
+          <li *ngFor="let f of files" class="file-item">
+            <span class="file-icon">📄</span>
+            <span class="file-name">{{ f.name }}</span>
+            <span class="file-size">({{ (f.size / 1024 / 1024).toFixed(2) }} MB)</span>
+          </li>
+        </ul>
+      </div>
+    </div> -->
+
+    <!-- Action Buttons -->
+    <!-- <div class="action-buttons">
+      <button 
+        class="btn btn-primary" 
+        (click)="upload()"
+        [disabled]="!files.length || isProcessing"
+      >
+        🚀 Upload & Analyze Files
+      </button>
+      <button 
+        class="btn btn-secondary" 
+        (click)="downloadAll()"
+        *ngIf="results?.length && !isProcessing"
+        [disabled]="!hasDownloadableFiles()"
+      >
+        ⬇️ Download All Remediated Files
+      </button>
+    </div> -->
+
+    <!-- Overall Progress -->
+    <!-- <div class="progress-section" *ngIf="isProcessing || uploadProgress > 0">
+      <div class="progress-info">
+        <span>Overall Upload Progress:</span>
+        <span class="progress-percent">{{ uploadProgress }}%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="uploadProgress"></div>
+      </div>
+      <p class="processing-status" *ngIf="isProcessing">
+        ⏳ Processing files... Please wait
+      </p>
+    </div> -->
+
+    <!-- Error Message -->
+    <!-- <div class="error-message" *ngIf="error">
+      {{ error }}
+    </div> -->
+
+    <!-- Results Section -->
+    <!-- <div class="results-section" *ngIf="results?.length">
+      <h3>📊 Analysis Results</h3>
+      <p class="results-summary">
+        Processed <strong>{{ results.length }}</strong> file(s) • 
+        Total issues fixed: <strong>{{ getTotalFixed() }}</strong>
+      </p> -->
+
+      <!-- Per-File Results -->
+      <!-- <div class="file-results">
+        <div 
+          *ngFor="let result of results; let i = index" 
+          class="file-result-card"
+          [class.error]="result.error"
+          [class.success]="!result.error && result.report"
+        > -->
+          <!-- File Header with Separator -->
+          <!-- <div class="file-result-header">
+            <div class="file-header-left">
+              <span class="file-number">FILE {{ i + 1 }} OF {{ results.length }}</span>
+              <span class="file-name-large">{{ result.fileName }}</span>
+            </div>
+            <div class="file-header-right">
+              <span 
+                class="status-badge"
+                [class.success]="!result.error"
+                [class.error]="result.error"
+              >
+                {{ result.error ? '❌ ERROR' : '✅ COMPLETED' }}
+              </span>
+            </div>
+          </div> -->
+
+          <!-- Error Display -->
+          <!-- <div *ngIf="result.error" class="error-details">
+            <p><strong>Error:</strong> {{ result.error }}</p>
+          </div> -->
+
+          <!-- Success Report Display -->
+          <!-- <div *ngIf="!result.error && result.report" class="report-details">
+            <div class="report-section">
+              <h4>Summary</h4>
+              <div class="summary-grid">
+                <div class="summary-item">
+                  <span class="label">Issues Fixed (Alt Text):</span>
+                  <span class="value">{{ result.report.summary.fixed }}</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">Issues Flagged:</span>
+                  <span class="value">{{ result.report.summary.flagged }}</span>
+                </div>
+              </div>
+            </div> -->
+
+            <!-- Detailed Issues (if any) -->
+            <!-- <div class="report-section" *ngIf="result.report.details">
+              <h4>Details</h4>
+              
+              <div *ngIf="result.report.details.slidesMissingTitles?.length" class="issue-group">
+                <strong>Slides Missing Titles:</strong>
+                <ul>
+                  <li *ngFor="let slide of result.report.details.slidesMissingTitles">
+                    Slide {{ slide }}
+                  </li>
+                </ul>
+              </div>
+
+              <div *ngIf="result.report.details.imagesMissingOrBadAlt?.length" class="issue-group">
+                <strong>Images with Missing/Bad Alt Text:</strong>
+                <ul>
+                  <li *ngFor="let img of result.report.details.imagesMissingOrBadAlt">
+                    {{ img }}
+                  </li>
+                </ul>
+              </div>
+
+              <div *ngIf="result.report.details.autoFixedAltText?.length" class="issue-group highlight">
+                <strong>✅ Auto-Fixed Alt Text:</strong>
+                <ul>
+                  <li *ngFor="let fix of result.report.details.autoFixedAltText">
+                    {{ fix }}
+                  </li>
+                </ul>
+              </div>
+
+              <div *ngIf="result.report.details.titleNeedsFixing" class="issue-group">
+                <strong>⚠️ Presentation Title:</strong>
+                <p>Main presentation title is missing or empty</p>
+              </div>
+
+              <div *ngIf="result.report.details.fileNameNeedsFixing" class="issue-group">
+                <strong>⚠️ File Name:</strong>
+                <p>Suggested: {{ result.suggestedFileName }}</p>
+              </div>
+            </div>
+          </div> -->
+
+          <!-- Download Button for This File -->
+          <!-- <div class="file-actions">
+            <button 
+              class="btn btn-small btn-download"
+              (click)="downloadFile(result.suggestedFileName)"
+              *ngIf="result.suggestedFileName && !result.error"
+              [disabled]="isProcessing"
+            >
+              ⬇️ Download This File
+            </button>
+          </div> -->
+
+          <!-- File Separator Line -->
+          <!-- <div class="file-separator" *ngIf="i < results.length - 1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div> -->
+
+<div class="batch-upload">
+  <h2>📁 Batch PowerPoint Accessibility Checker</h2>
+  <p class="subtitle">
+    Upload up to 10 PowerPoint files at once for accessibility analysis and remediation.
+  </p>
+
+  <div class="upload-section">
+    <div class="file-input-group">
+      <label for="fileInput" class="file-label">
+        📂 Select PowerPoint Files (Max 10)
+      </label>
+
+      <input
+        #fileInput
+        id="fileInput"
+        type="file"
+        multiple
+        accept=".pptx,.ppt,.pps,.pot,.potx,.ppsx"
+        (change)="onFilesSelected($event)"
+        class="file-input"
+      />
+
+      <div class="selected-files" *ngIf="files.length">
+        <h4>Selected Files ({{ files.length }}/10):</h4>
+        <ul class="file-list">
+          <li *ngFor="let f of files" class="file-item">
+            <span class="file-icon">📄</span>
+            <span class="file-name">{{ f.name }}</span>
+            <span class="file-size">({{ (f.size / 1024 / 1024).toFixed(2) }} MB)</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <button
+        class="btn btn-primary"
+        (click)="upload()"
+        [disabled]="!files.length || isProcessing"
+      >
+        🚀 Upload & Analyze Files
+      </button>
+
+      <button
+        class="btn btn-secondary"
+        (click)="downloadAll()"
+        *ngIf="results?.length && !isProcessing"
+        [disabled]="!hasDownloadableFiles()"
+      >
+        ⬇️ Download All Remediated Files
+      </button>
+
+      <button
+        class="btn btn-light"
+        type="button"
+        (click)="clearAll(fileInput)"
+        [disabled]="isProcessing"
+      >
+        <!-- 🗑️ Clear -->
+        Clear All
+      </button>
+    </div>
+
+    <div class="progress-section" *ngIf="isProcessing || uploadProgress > 0">
+      <div class="progress-info">
+        <span>Overall Upload Progress:</span>
+        <span class="progress-percent">{{ uploadProgress }}%</span>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" [style.width.%]="uploadProgress"></div>
+      </div>
+
+      <p class="processing-status" *ngIf="isProcessing">
+        ⏳ Processing files... Please wait
+      </p>
+    </div>
+
+    <div class="error-message" *ngIf="error">
+      {{ error }}
+    </div>
+
+    <div class="results-section" *ngIf="results?.length">
+      <h3>📊 Analysis Results</h3>
+      <p class="results-summary">
+        Processed <strong>{{ results.length }}</strong> file(s) •
+        Total issues fixed: <strong>{{ getTotalFixed() }}</strong>
+      </p>
+
+      <div class="file-results">
+        <div
+          *ngFor="let result of results; let i = index"
+          class="file-result-card"
+          [class.error]="result.error"
+          [class.success]="!result.error && result.report"
+        >
+          <div class="file-result-header">
+            <div class="file-header-left">
+              <span class="file-number">FILE {{ i + 1 }} OF {{ results.length }}</span>
+              <span class="file-name-large">{{ result.fileName }}</span>
+            </div>
+
+            <div class="file-header-right">
+              <span
+                class="status-badge"
+                [class.success]="!result.error"
+                [class.error]="result.error"
+              >
+                {{ result.error ? '❌ ERROR' : '✅ COMPLETED' }}
+              </span>
+            </div>
+          </div>
+
+          <div *ngIf="result.error" class="error-details">
+            <p><strong>Error:</strong> {{ result.error }}</p>
+          </div>
+
+          <div *ngIf="!result.error && result.report" class="report-details">
+            <div class="report-section">
+              <h4>Summary</h4>
+              <div class="summary-grid">
+                <div class="summary-item">
+                  <span class="label">Issues Fixed (Alt Text):</span>
+                  <span class="value">{{ result.report.summary.fixed }}</span>
+                </div>
+                <div class="summary-item">
+                  <span class="label">Issues Flagged:</span>
+                  <span class="value">{{ result.report.summary.flagged }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Toggle Details -->
+            <div class="report-section" *ngIf="result.report.details">
+              <button
+                class="btn btn-small btn-light"
+                (click)="result.showDetails = !result.showDetails"
+              >
+                {{ result.showDetails ? 'Hide Details' : 'Show Details' }}
+              </button>
+
+              <div *ngIf="result.showDetails" class="details-expanded">
+
+                <div *ngIf="result.report.details.slidesMissingTitles?.length" class="issue-group">
+                  <strong>Slides Missing Titles:</strong>
+                  <ul>
+                    <li *ngFor="let slide of result.report.details.slidesMissingTitles">
+                      Slide {{ slide.slideNumber }} — {{ slide.message }}
+                    </li>
+                  </ul>
+                </div>
+
+                <div *ngIf="result.report.details.imagesMissingOrBadAlt?.length" class="issue-group">
+                  <strong>Images Missing/Bad Alt Text:</strong>
+                  <ul>
+                    <li *ngFor="let img of result.report.details.imagesMissingOrBadAlt">
+                      Slide {{ img.slideNumber }}
+                      <!-- <span *ngIf="img.shapeName"> — {{ img.shapeName }}</span> -->
+                      <span *ngIf="img.issue"> — {{ img.issue }}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <!-- <div *ngIf="result.report.details.autoFixedAltText?.length" class="issue-group highlight">
+                  <strong>✅ Auto-Fixed Alt Text:</strong>
+                  <ul>
+                    <li *ngFor="let fix of result.report.details.autoFixedAltText">
+                      Slide {{ fix.slideNumber }} — {{ fix.fix }}
+                      <span *ngIf="fix.altText"> ("{{ fix.altText }}")</span>
+                    </li>
+                  </ul>
+                </div> -->
+
+                <div *ngIf="getVisibleAutoFixed(result).length" class="issue-group highlight">
+                  <strong>✅ Auto-Fixed Alt Text:</strong>
+                  <ul>
+                    <li *ngFor="let fix of getVisibleAutoFixed(result)">
+                      Slide {{ fix.slideNumber }} — {{ fix.fix }}
+                      <span *ngIf="fix.altText"> ("{{ fix.altText }}")</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div *ngIf="result.report.details.titleNeedsFixing" class="issue-group">
+                  <strong>Missing Title</strong>
+                </div>
+
+              </div>
+            </div>
+
+            <div class="report-section" *ngIf="result.suggestedFileName">
+              <button
+                class="btn btn-success"
+                (click)="downloadFile(result.suggestedFileName)"
+              >
+                ⬇️ Download This File
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

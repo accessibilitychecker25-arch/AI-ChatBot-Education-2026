@@ -1,0 +1,48 @@
+<div class="upload-shell">
+  <div class="mode-section">
+    <h3 class="mode-title">Upload Files</h3>
+  </div>
+
+  <div class="actions-row">
+    <input
+      #fileInput
+      type="file"
+      id="fileInput"
+      class="sr-only"
+      multiple
+      [attr.accept]="'.pptx, .ppt, .pps, .potx'"
+      (change)="onFileSelected($event)"
+    />
+
+    <button
+      type="button"
+      class="text-sm px-3 py-1 rounded bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 transition"
+      (click)="triggerFileDialog()"
+    >
+      {{ selectedFiles.length ? (selectedFiles.length === 1 ? selectedFiles[0].name : (selectedFiles.length + ' files selected')) : 'Choose File(s)' }}
+    </button>
+
+    <button
+      class="text-sm px-3 py-1 rounded transition"
+      [class.bg-blue-600]="isFormValid()"
+      [class.text-white]="isFormValid()"
+      [class.hover:bg-blue-700]="isFormValid()"
+      [class.bg-gray-400]="!isFormValid()"
+      [class.text-gray-600]="!isFormValid()"
+      [class.cursor-not-allowed]="!isFormValid()"
+      (click)="submit()"
+      [disabled]="!isFormValid()"
+    >
+      Process
+    </button>
+
+    <button
+      type="button"
+      class="text-sm px-3 py-1 rounded bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 transition"
+      (click)="clearFile()"
+      [disabled]="selectedFiles.length === 0 && !hasResults"
+    >
+      Clear
+    </button>
+  </div>
+</div>
