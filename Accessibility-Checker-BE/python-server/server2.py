@@ -202,12 +202,19 @@ async def upload_files(
             out_name = f"remediated-{base}.pptx"
             out_path = OUTPUT_DIR / f"{unique_prefix}_{out_name}"
 
+            original_report = analyze_powerpoint(pptx_input, filename)
+
             alt_fixed_count, alt_fix_details, contrast_fixed_count, contrast_fix_details = remediate_accessibility_pptx(pptx_input, out_path)
 
-            report = analyze_powerpoint(out_path, out_name)
+            post_remediation_report = analyze_powerpoint(out_path, out_name)
+
+            report = original_report
+            report["fileName"] = out_name
             report["summary"]["fixed"] += alt_fixed_count + contrast_fixed_count
             report["details"]["autoFixedAltText"] = alt_fix_details
             report["details"]["autoFixedColorContrast"] = contrast_fix_details
+            report["details"]["remainingColorContrastIssues"] = post_remediation_report["details"].get("colorContrastIssues", [])
+            report["details"]["remainingImagesMissingOrBadAlt"] = post_remediation_report["details"].get("imagesMissingOrBadAlt", [])
 
             results.append({
                 "fileName": filename,
@@ -246,7 +253,11 @@ def analyze_powerpoint(file_path, filename):
             "listFormattingIssues": [],
             "colorContrastIssues": [],
             "titleNeedsFixing": False,
-            "fileNameNeedsFixing": False
+            "fileNameNeedsFixing": False,
+            "autoFixedAltText": [],
+            "autoFixedColorContrast": [],
+            "remainingColorContrastIssues": [],
+            "remainingImagesMissingOrBadAlt": []
         }
     }
 
