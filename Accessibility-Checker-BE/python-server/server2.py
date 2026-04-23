@@ -12,7 +12,11 @@ from lxml import etree
 import platform
 import subprocess
 import uuid
-import win32com.client
+
+try:
+    import win32com.client
+except ImportError:
+    win32com = None
 
 # Load environment variables (optional)
 try:
@@ -43,6 +47,12 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import traceback
+
+from color_contrast import (
+    build_pptx_color_context,
+    check_slide_color_contrast,
+    remediate_slide_color_contrast,
+)
 
 # ---------- CONFIG ----------
 BASE_DIR = Path(__file__).resolve().parent
@@ -96,6 +106,9 @@ def convert_legacy_ppt_to_pptx_powerpoint(src_path: Path, out_dir: Path) -> Path
 
     out_dir.mkdir(parents=True, exist_ok=True)
     dst_path = out_dir / f"{src_path.stem}.pptx"
+
+    if win32com is None:
+        raise RuntimeError("win32com is required for legacy PowerPoint conversion on Windows.")
 
     pp = win32com.client.Dispatch("PowerPoint.Application")
     pp.Visible = 1
@@ -189,11 +202,19 @@ async def upload_files(
             out_name = f"remediated-{base}.pptx"
             out_path = OUTPUT_DIR / f"{unique_prefix}_{out_name}"
 
-            fixed_count, fix_details = remediate_alt_text_pptx(pptx_input, out_path)
+            original_report = analyze_powerpoint(pptx_input, filename)
 
-            report = analyze_powerpoint(out_path, out_name)
-            report["summary"]["fixed"] += fixed_count
-            report["details"]["autoFixedAltText"] = fix_details
+            alt_fixed_count, alt_fix_details, contrast_fixed_count, contrast_fix_details = remediate_accessibility_pptx(pptx_input, out_path)
+
+            post_remediation_report = analyze_powerpoint(out_path, out_name)
+
+            report = original_report
+            report["fileName"] = out_name
+            report["summary"]["fixed"] += alt_fixed_count + contrast_fixed_count
+            report["details"]["autoFixedAltText"] = alt_fix_details
+            report["details"]["autoFixedColorContrast"] = contrast_fix_details
+            report["details"]["remainingColorContrastIssues"] = post_remediation_report["details"].get("colorContrastIssues", [])
+            report["details"]["remainingImagesMissingOrBadAlt"] = post_remediation_report["details"].get("imagesMissingOrBadAlt", [])
 
             results.append({
                 "fileName": filename,
@@ -209,6 +230,10 @@ async def upload_files(
             })
 
     return JSONResponse(content={"files": results})
+
+@app.post("/api/session")
+def create_session():
+    return {"sessionId": uuid.uuid4().hex}
 
 def get_slide_num(path: str) -> int:
     """
@@ -230,13 +255,20 @@ def analyze_powerpoint(file_path, filename):
             "imagesMissingOrBadAlt": [],
             "gifsDetected": [],
             "listFormattingIssues": [],
+            "colorContrastIssues": [],
             "titleNeedsFixing": False,
-            "fileNameNeedsFixing": False
+            "fileNameNeedsFixing": False,
+            "autoFixedAltText": [],
+            "autoFixedColorContrast": [],
+            "remainingColorContrastIssues": [],
+            "remainingImagesMissingOrBadAlt": []
         }
     }
 
     try:
         with zipfile.ZipFile(file_path, 'r') as zip_file:
+            contrast_context = build_pptx_color_context(zip_file)
+
             # ---- Title metadata check ----
             if 'docProps/core.xml' in zip_file.namelist():
                 core_xml = zip_file.read('docProps/core.xml').decode('utf-8', errors='ignore')
@@ -278,6 +310,12 @@ def analyze_powerpoint(file_path, filename):
                 if list_issues:
                     report["details"]["listFormattingIssues"].extend(list_issues)
                     report["summary"]["flagged"] += len(list_issues)
+
+                # Check color contrast
+                contrast_issues = check_slide_color_contrast(zip_file.read(slide_path), slide_number, contrast_context)
+                if contrast_issues:
+                    report["details"]["colorContrastIssues"].extend(contrast_issues)
+                    report["summary"]["flagged"] += len(contrast_issues)
 
             # ---- GIF check ----
             gif_files = [
@@ -812,6 +850,78 @@ def remediate_alt_text_pptx(src_pptx: Path, dst_pptx: Path):
 
     return fixed_total, all_fix_details
 
+def remediate_accessibility_pptx(src_pptx: Path, dst_pptx: Path):
+    """
+    Remediate alt text and color contrast in one pass.
+    """
+    alt_fixed_total = 0
+    all_alt_fix_details = []
+    contrast_fixed_total = 0
+    all_contrast_fix_details = []
+
+    print(f"\n🔧 Starting accessibility remediation for: {src_pptx.name}")
+    print(f"   AI Alt Text Mode: {os.getenv('ENABLE_AI_ALT_TEXT', 'true')}")
+
+    with zipfile.ZipFile(src_pptx, "r") as zin, zipfile.ZipFile(dst_pptx, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        info_by_name = {item.filename: item for item in zin.infolist()}
+        contrast_context = build_pptx_color_context(zin)
+
+        slide_names = [
+            name for name in info_by_name.keys()
+            if re.match(r"ppt/slides/slide\d+\.xml$", name)
+        ]
+        slide_names = sorted(slide_names, key=get_slide_num)
+
+        non_slide_names = [
+            name for name in info_by_name.keys()
+            if name not in slide_names
+        ]
+
+        for name in non_slide_names:
+            item = info_by_name[name]
+            data = zin.read(name)
+            zout.writestr(item, data)
+
+        for name in slide_names:
+            item = info_by_name[name]
+            data = zin.read(name)
+            slide_num = get_slide_num(name)
+
+            try:
+                new_data, fixed, details = set_alt_text_in_slide_xml(
+                    data,
+                    slide_num,
+                    pptx_path=src_pptx
+                )
+                if fixed:
+                    data = new_data
+                    alt_fixed_total += fixed
+                    all_alt_fix_details.extend(details)
+            except Exception as e:
+                print(f"  ⚠️ Error processing alt text on slide {slide_num}: {e}")
+
+            try:
+                new_data, fixed, details = remediate_slide_color_contrast(
+                    data,
+                    slide_num,
+                    contrast_context
+                )
+                if fixed:
+                    data = new_data
+                    contrast_fixed_total += fixed
+                    all_contrast_fix_details.extend(details)
+            except Exception as e:
+                print(f"  ⚠️ Error processing color contrast on slide {slide_num}: {e}")
+
+            zout.writestr(item, data)
+
+    print(f"\n✅ Accessibility remediation complete")
+    print(f"   Alt text fixes: {alt_fixed_total}")
+    print(f"   Color contrast fixes: {contrast_fixed_total}")
+
+    return alt_fixed_total, all_alt_fix_details, contrast_fixed_total, all_contrast_fix_details
+
+
 @app.get("/download")
 def download_all_files():
     candidates = [p for p in OUTPUT_DIR.glob("*") if p.is_file()]
@@ -823,7 +933,8 @@ def download_all_files():
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for p in candidates:
-            zf.write(p, arcname=p.name)
+            clean_name = re.sub(r"^[0-9a-f]{8}_", "", p.name)
+            zf.write(p, arcname=clean_name)
 
     return FileResponse(
         path=str(zip_path),
@@ -873,7 +984,8 @@ async def download_selected_files(request: Request):
                     else:
                         continue
 
-                zf.write(file_path, arcname=name)
+                clean_name = re.sub(r"^[0-9a-f]{8}_", "", file_path.name)
+                zf.write(file_path, arcname=clean_name)
                 added_any = True
 
         if not added_any:

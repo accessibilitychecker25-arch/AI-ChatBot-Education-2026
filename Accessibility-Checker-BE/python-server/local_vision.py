@@ -50,7 +50,7 @@ class LocalVisionModel:
         self.enabled = False
         self.model = None
         self.processor = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cpu" if not TRANSFORMERS_AVAILABLE else ("cuda" if torch.cuda.is_available() else "cpu")
         
         if not TRANSFORMERS_AVAILABLE:
             print("❌ Transformers library not available")
@@ -375,3 +375,4 @@ def generate_alt_text_free(
     
     # If both fail, return None (main code will use placeholder)
     return None
+
