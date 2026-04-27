@@ -1,0 +1,35 @@
+.upload-shell {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	width: 100%;
+}
+
+.mode-section {
+	padding-top: 0.25rem;
+}
+
+.mode-title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.mode-hint {
+	margin: 0.2rem 0 0;
+	color: #4b5563;
+	font-size: 0.9rem;
+}
+
+.actions-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+@media (prefers-color-scheme: dark) {
+	.mode-hint {
+		color: #9ca3af;
+	}
+}

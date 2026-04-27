@@ -17,7 +17,6 @@ import { CommonModule } from '@angular/common';
 })
 export class FileUploadComponent {
   @Output() submitted = new EventEmitter<{ file: File; title: string }>();
-  // New event for multiple-file submissions
   @Output() submittedMultiple = new EventEmitter<File[]>();
   @Output() cleared = new EventEmitter<void>();
   @Input() hasResults = false;
@@ -52,11 +51,11 @@ export class FileUploadComponent {
     const input = event.target as HTMLInputElement;
     const files = input.files ? Array.from(input.files) : [];
     const valid = files.filter((f) => this.isValidFile(f));
+
     this.selectedFiles = valid;
     this.selectedFile = valid[0];
   }
 
-  // --- THIS IS THE FIXED FUNCTION ---
   // Check if the selected file is valid (DOCX OR PPTX)
   isValidFile(file: File): boolean {
     const name = file.name.toLowerCase();
@@ -83,21 +82,15 @@ export class FileUploadComponent {
 
     return false;
   }
-  // --------------------------------
-
-  // Submit the file
   submit() {
     if (!this.isFormValid()) return;
-    
-    // Pass the files up to the Dashboard
+
     if (this.selectedFiles.length > 1) {
       this.submittedMultiple.emit(this.selectedFiles.slice());
     } else {
-      // Even for single files, we send the object expected by the parent
       this.submitted.emit({ file: this.selectedFile!, title: '' });
     }
-    
-    // Clear selection after submit so user can upload again
+
     this.selectedFile = undefined;
     this.selectedFiles = [];
     this.resetNativeInputValue();
@@ -105,6 +98,6 @@ export class FileUploadComponent {
 
   // Validate if a file is selected
   isFormValid(): boolean {
-    return this.selectedFiles && this.selectedFiles.length > 0; // At least one file selected
+    return this.selectedFiles && this.selectedFiles.length > 0;
   }
 }

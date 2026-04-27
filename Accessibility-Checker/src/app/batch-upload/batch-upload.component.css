@@ -180,6 +180,20 @@
   background: #7c3aed;
 }
 
+.btn-light {
+  background: #999999; 
+  color: white;
+}
+
+.btn-light:hover:not(:disabled) {
+  background: #666666;
+}
+
+.btn-light:disabled {
+  background: #d1d1d1;
+  color: #666666;
+}
+
 .action-buttons {
   margin-bottom: 1.5rem;
   display: flex;
@@ -308,4 +322,23 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.details-expanded {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.issue-group {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.issue-group.highlight {
+  background: #ecfdf5;
+  padding: 0.5rem;
+  border-radius: 4px;
 }

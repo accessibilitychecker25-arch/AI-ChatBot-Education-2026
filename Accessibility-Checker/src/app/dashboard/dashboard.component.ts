@@ -164,6 +164,49 @@ interface DocxRemediationResponse {
         recommendation: string;
         filePath?: string;
       }>;
+      // ===== PHASE 1: 5 NEW ACCESSIBILITY FEATURES =====
+      duplicateSlides?: Array<{
+        slideNumber: number;
+        duplicateOf: number;
+        message: string;
+      }>;
+      rawUrlFindings?: Array<{
+        slideNumber: number;
+        location: string;
+        matchedText: string;
+        context: string;
+        type: string;
+        recommendation: string;
+      }>;
+      nonEnglishFindings?: Array<{
+        slideNumber: number;
+        location: string;
+        detectedLanguage: string;
+        sampleText: string;
+        type: string;
+        recommendation: string;
+      }>;
+      likelyDecorativeImages?: Array<{
+        slideNumber: number;
+        shapeId: string;
+        shapeName: string;
+        altText: string;
+        type: string;
+        recommendation: string;
+      }>;
+      headerFooterFindings?: Array<{
+        slideNumber: number;
+        location: string;
+        type: string;
+        repeatedText?: string;
+        recommendation: string;
+      }>;
+      duplicateTitleFixes?: Array<{
+        slideNumber: number;
+        fix: string;
+        oldTitle: string;
+        newTitle: string;
+      }>;
       // Inline content positioning details
       inlineContentDetails?: Array<{
         type: string;
@@ -172,11 +215,16 @@ interface DocxRemediationResponse {
         fixedContent?: string;
       }>;
       colorContrastIssues?: Array<{
+        slideNumber?: number;
+        shapeId?: string;
+        shapeName?: string;
         paragraphIndex: number;
         color: string;
         sizePt?: number;
         bold?: boolean;
         ratio: number;
+        requiredRatio?: number;
+        backgroundColor?: string;
         sample: string;
       }>;
       languageDefaultIssue?: {
@@ -209,7 +257,12 @@ export class DashboardComponent {
   // debug: show raw remediation.report JSON
   showRawReport = false;
   isUploading = false;
+  isServerProcessing = false;
   progress = 0;
+  progressStageLabel = 'Ready';
+  processingElapsedSeconds = 0;
+  private processingExpectedSeconds = 30;
+  private processingTimer?: ReturnType<typeof setInterval>;
   selectedFile?: File;
   fileName: string = '';
   downloadFileName: string = '';
@@ -294,14 +347,13 @@ export class DashboardComponent {
   handleFiles(files: File[]) {
     if (!files || !files.length) return;
 
-    // 1. Enforce 7-File Limit
-    if (files.length > 7) {
-      alert('You can only upload a maximum of 7 files at once.');
+    // 1. Enforce 10-file limit
+    if (files.length > 10) {
+      alert('You can only upload a maximum of 10 files at once.');
       return;
     }
 
-    this.isUploading = true;
-    this.progress = 0;
+    this.beginProgressTracking(files.length);
     this.remediation = undefined; // Clear current main view
     this.issues = []; // Clear current issues
 
@@ -321,38 +373,57 @@ export class DashboardComponent {
       .subscribe({
         next: (event: HttpEvent<any>) => {
           if (event.type === HttpEventType.UploadProgress) {
-            this.progress = Math.round(
-              (100 * event.loaded) / (event.total ?? 1)
-            );
+            this.updateUploadProgress(event.loaded, event.total);
           } else if (event.type === HttpEventType.Response) {
-            // Handle the Batch Response from Python
+            this.stopProcessingTimer();
+            this.progress = 100;
+            this.progressStageLabel = 'Completed';
             const body = (event as HttpResponse<any>).body;
-            
-            // Check if we got a list of results (Backend: { "resultss": [...] })
-            // if (body && body.files && Array.isArray(body.files)) {
-            if (body && body.results && Array.isArray(body.results)) {
-              
-              // Add all new reports to our list
-              const newReports = body.results.map((res: any) => {
-              // const newReports = body.files.map((res: any) => {
-                // Find the original file object to match (by name)
-                const orig = files.find(f => f.name === res.fileName) || files[0];
+
+            // Backend may return either { files: [...] } or { results: [...] }.
+            const batchItems = Array.isArray(body?.files)
+              ? body.files
+              : Array.isArray(body?.results)
+              ? body.results
+              : [];
+
+            if (batchItems.length) {
+              const reportItems = batchItems.filter((res: any) => !!res?.report);
+              const errorItems = batchItems.filter((res: any) => !!res?.error);
+
+              const newReports: ProcessedReport[] = reportItems.map((res: any) => {
+                const orig = files.find((f) => f.name === res.fileName) || files[0];
                 return { response: res, original: orig };
               });
-              
-              this.processedReports.push(...newReports);
 
-              // Select the first file from this batch to show in the main view
               if (newReports.length > 0) {
-                this.selectReport(this.processedReports.length - newReports.length);
+                const firstNewIndex = this.processedReports.length;
+                this.processedReports.push(...newReports);
+                this.selectReport(firstNewIndex);
               }
-            } 
-            // Fallback: If Python returned just one object
-            else if (body && body.report) {
-               this.remediation = body;
-               this.fileName = body.suggestedFileName || "remediated.pptx";
-               this.issues = this.flattenIssues(body);
-               this.processedReports.push({ response: body, original: files[0] });
+
+              if (errorItems.length > 0) {
+                const errorMessages = errorItems.map(
+                  (e: any) => `${e.fileName || 'Unknown file'}: ${e.error}`
+                );
+                this.issues = errorMessages.map((message: string) => ({
+                  type: 'flagged',
+                  message,
+                }));
+              }
+            } else if (body && body.report) {
+              // Fallback for single-object response.
+              this.remediation = body;
+              this.fileName = body.suggestedFileName || 'remediated.pptx';
+              this.issues = this.flattenIssues(body);
+              this.processedReports.push({ response: body, original: files[0] });
+            } else {
+              this.issues = [
+                {
+                  type: 'flagged',
+                  message: 'Upload finished but server response had no readable report payload.',
+                },
+              ];
             }
 
             this.isUploading = false;
@@ -360,6 +431,8 @@ export class DashboardComponent {
         },
         error: (err) => {
           console.error('Batch Upload error:', err);
+          this.stopProcessingTimer();
+          this.progressStageLabel = 'Upload failed';
           this.isUploading = false;
           // Show error message (e.g. "Too many files" from backend)
           this.issues = [
@@ -402,12 +475,14 @@ export class DashboardComponent {
   downloadReport(index: number) {
     const rep = this.processedReports[index];
     if (!rep) return;
-    if (rep.original) {
-      this.selectedFile = rep.original;
-      this.downloadFixed();
-    } else {
-      this.issues = [{ type: 'flagged', message: 'Original file not available for download' }];
+    const targetFileName = rep.response?.suggestedFileName;
+
+    if (!targetFileName) {
+      this.issues = [{ type: 'flagged', message: 'No remediated file is available for this report.' }];
+      return;
     }
+
+    this.downloadFixed(targetFileName);
   }
 
   // --- UPDATED HANDLE FILE TO ALLOW POWERPOINT ---
@@ -415,8 +490,7 @@ export class DashboardComponent {
     const file = payload.file;
     const title = (payload.title || '').trim();
     this.selectedFile = file;
-    this.progress = 0;
-    this.isUploading = true;
+    this.beginProgressTracking(1);
     this.remediation = undefined;
     this.issues = [];
 
@@ -451,25 +525,54 @@ export class DashboardComponent {
       .subscribe({
         next: (event: HttpEvent<any>) => {
           if (event.type === HttpEventType.UploadProgress) {
-            this.progress = Math.round(
-              (100 * event.loaded) / (event.total ?? 1),
-            );
+            this.updateUploadProgress(event.loaded, event.total);
+          // } else if (event.type === HttpEventType.Response) {
+          //   const res = (event as HttpResponse<any>)
+          //     .body as DocxRemediationResponse;
+          //   this.remediation = res;
+          //   this.fileName = res.suggestedFileName ? res.suggestedFileName : "remediated.pptx";
+          //   this.issues = this.flattenIssues(res);
+
+          //   // Save processed report so the user can inspect it individually later (include original file)
+          //   try {
+          //     if (res && res.report) this.processedReports.push({ response: res, original: file });
+          //   } catch (e) {}
+          //   this.isUploading = false;
+          // }
           } else if (event.type === HttpEventType.Response) {
-            const res = (event as HttpResponse<any>)
-              .body as DocxRemediationResponse;
+            this.stopProcessingTimer();
+            this.progress = 100;
+            this.progressStageLabel = 'Completed';
+            const body = (event as HttpResponse<any>).body;
+
+            const res =
+              body?.files && Array.isArray(body.files) && body.files.length
+                ? body.files[0]
+                : body;
+
+            if (!res || !res.report) {
+              this.isUploading = false;
+              this.issues = [
+                { type: 'flagged', message: 'Unexpected upload response from server.' },
+              ];
+              return;
+            }
+
             this.remediation = res;
-            this.fileName = res.suggestedFileName ? res.suggestedFileName : "remediated.pptx";
+            this.fileName = res.suggestedFileName || 'remediated.pptx';
             this.issues = this.flattenIssues(res);
 
-            // Save processed report so the user can inspect it individually later (include original file)
             try {
-              if (res && res.report) this.processedReports.push({ response: res, original: file });
-            } catch (e) {}
+              this.processedReports.push({ response: res, original: file });
+            } catch {}
+
             this.isUploading = false;
           }
         },
         error: (err) => {
           console.error('Upload error:', err);
+          this.stopProcessingTimer();
+          this.progressStageLabel = 'Upload failed';
           this.isUploading = false;
           this.issues = [
             {
@@ -482,14 +585,89 @@ export class DashboardComponent {
   }
 
   handleClear() {
+    this.stopProcessingTimer();
     this.selectedFile = undefined;
     this.remediation = undefined;
     this.issues = [];
     this.isUploading = false;
     this.progress = 0;
+    this.progressStageLabel = 'Ready';
     this.fileName = '';
     this.downloadFileName = '';
     this.processedReports = []; // Clear all processed reports
+  }
+
+  private startProcessingTimer() {
+    if (this.isServerProcessing) return;
+    this.isServerProcessing = true;
+    this.progressStageLabel = 'Validating uploaded files...';
+    this.progress = Math.max(this.progress, 40);
+    this.processingElapsedSeconds = 0;
+    this.processingTimer = setInterval(() => {
+      this.processingElapsedSeconds += 1;
+
+      // Move smoothly from 40% to 95% based on estimated server work.
+      const normalized = Math.min(
+        1,
+        this.processingElapsedSeconds / this.processingExpectedSeconds,
+      );
+      const stagedProgress = 40 + Math.floor(normalized * 55);
+      this.progress = Math.max(this.progress, Math.min(95, stagedProgress));
+
+      if (this.progress < 55) {
+        this.progressStageLabel = 'Validating uploaded files...';
+      } else if (this.progress < 80) {
+        this.progressStageLabel = 'Running AI remediation...';
+      } else if (this.progress < 92) {
+        this.progressStageLabel = 'Building accessibility reports...';
+      } else {
+        this.progressStageLabel = 'Finalizing response...';
+      }
+    }, 1000);
+  }
+
+  private stopProcessingTimer() {
+    this.isServerProcessing = false;
+    if (this.processingTimer) {
+      clearInterval(this.processingTimer);
+      this.processingTimer = undefined;
+    }
+  }
+
+  private beginProgressTracking(fileCount: number) {
+    this.stopProcessingTimer();
+    this.isUploading = true;
+    this.isServerProcessing = false;
+    this.progress = 1;
+    this.progressStageLabel = 'Preparing files...';
+    this.processingElapsedSeconds = 0;
+    this.processingExpectedSeconds = Math.max(20, fileCount * 8);
+  }
+
+  private updateUploadProgress(loaded: number, total?: number) {
+    this.progressStageLabel = 'Uploading files...';
+
+    if (!total || total <= 0) {
+      this.progress = Math.max(this.progress, 8);
+      return;
+    }
+
+    // Reserve 0-40% for upload stage so processing can visibly occupy the rest.
+    const uploadPercent = Math.min(100, (100 * loaded) / total);
+    const mapped = Math.round(5 + (uploadPercent * 35) / 100);
+    this.progress = Math.max(this.progress, Math.min(40, mapped));
+
+    if (loaded >= total) {
+      this.startProcessingTimer();
+    }
+  }
+
+  formatElapsed(seconds: number): string {
+    const m = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   }
 
   // Remove individual report
@@ -894,6 +1072,145 @@ export class DashboardComponent {
       });
     }
 
+    // ===== PHASE 1: 5 NEW ACCESSIBILITY FEATURES =====
+    
+    // 1. DUPLICATE SLIDE TITLE FIXES (Auto-fixed)
+    if (d.duplicateTitleFixes?.length) {
+      let message = `${d.duplicateTitleFixes.length} duplicate slide(s) fixed by appending "Part N" to the title for screen reader distinction.`;
+      
+      if (d.duplicateTitleFixes.length > 0) {
+        const count = d.duplicateTitleFixes.length;
+        message += `\n\n📍 ${count} slide${count > 1 ? 's' : ''} fixed - Click to expand details`;
+        
+        const fixDetails = d.duplicateTitleFixes.map((item, index) => {
+          let detail = `${index + 1}. Slide ${item.slideNumber}: "${item.oldTitle}" → "${item.newTitle}"`;
+          return detail;
+        }).join('\n\n');
+        
+        message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View ${count} Title Fix${count > 1 ? 'es' : ''}</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${fixDetails}</div>\n</details>`;
+      }
+      
+      out.push({
+        type: 'fixed',
+        message: message,
+      });
+    }
+
+    if (d.duplicateSlides?.length) {
+      let message = `${d.duplicateSlides.length} duplicate slide(s) detected.`;
+
+      const details = d.duplicateSlides
+        .map(
+          (item, index) =>
+            `${index + 1}. Slide ${item.slideNumber} duplicates Slide ${item.duplicateOf}`
+        )
+        .join('\n');
+
+      message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View duplicate slides</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${details}</div>\n</details>`;
+
+      out.push({
+        type: 'flagged',
+        message,
+      });
+    }
+
+    // 2. RAW URL FINDINGS (Flagged for manual review)
+    if (d.rawUrlFindings?.length) {
+      let message = `${d.rawUrlFindings.length} raw URL(s) detected. Consider converting to hyperlinks for better accessibility.`;
+      
+      if (d.rawUrlFindings.length > 0) {
+        const count = d.rawUrlFindings.length;
+        message += `\n\n📍 ${count} URL${count > 1 ? 's' : ''} found - Click to expand details`;
+        
+        const urlDetails = d.rawUrlFindings.map((item, index) => {
+          let detail = `${index + 1}. Slide ${item.slideNumber}: ${item.matchedText}`;
+          if (item.context) detail += `\n    Context: "${item.context.substring(0, 60)}..."`;
+          if (item.recommendation) detail += `\n    Recommendation: ${item.recommendation}`;
+          return detail;
+        }).join('\n\n');
+        
+        message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View ${count} URL${count > 1 ? 's' : ''}</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${urlDetails}</div>\n</details>`;
+      }
+      
+      out.push({
+        type: 'flagged',
+        message: message,
+      });
+    }
+
+    // 3. NON-ENGLISH TEXT FINDINGS (Flagged for manual review)
+    if (d.nonEnglishFindings?.length) {
+      let message = `${d.nonEnglishFindings.length} non-English text section(s) detected. Verify language metadata is set correctly.`;
+      
+      if (d.nonEnglishFindings.length > 0) {
+        const count = d.nonEnglishFindings.length;
+        message += `\n\n📍 ${count} section${count > 1 ? 's' : ''} found - Click to expand details`;
+        
+        const langDetails = d.nonEnglishFindings.map((item, index) => {
+          let detail = `${index + 1}. Slide ${item.slideNumber}: Detected "${item.detectedLanguage}"`;
+          if (item.sampleText) detail += `\n    Sample: "${item.sampleText.substring(0, 60)}..."`;
+          if (item.recommendation) detail += `\n    Recommendation: ${item.recommendation}`;
+          return detail;
+        }).join('\n\n');
+        
+        message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View ${count} Non-English Section${count > 1 ? 's' : ''}</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${langDetails}</div>\n</details>`;
+      }
+      
+      out.push({
+        type: 'flagged',
+        message: message,
+      });
+    }
+
+    // 4. LIKELY DECORATIVE IMAGES (Flagged for manual review)
+    if (d.likelyDecorativeImages?.length) {
+      let message = `${d.likelyDecorativeImages.length} image(s) appear to be decorative (logos, icons, etc.). Ensure these are properly marked to skip AI alt-text generation.`;
+      
+      if (d.likelyDecorativeImages.length > 0) {
+        const count = d.likelyDecorativeImages.length;
+        message += `\n\n📍 ${count} image${count > 1 ? 's' : ''} flagged - Click to expand details`;
+        
+        const imageDetails = d.likelyDecorativeImages.map((item, index) => {
+          let detail = `${index + 1}. Slide ${item.slideNumber}: "${item.shapeName}"`;
+          if (item.altText) detail += `\n    Current alt: "${item.altText}"`;
+          if (item.recommendation) detail += `\n    Recommendation: ${item.recommendation}`;
+          return detail;
+        }).join('\n\n');
+        
+        message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View ${count} Decorative Image${count > 1 ? 's' : ''}</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${imageDetails}</div>\n</details>`;
+      }
+      
+      out.push({
+        type: 'flagged',
+        message: message,
+      });
+    }
+
+    // 5. HEADER/FOOTER FINDINGS (Flagged for manual review)
+    if (d.headerFooterFindings?.length) {
+      let message = `${d.headerFooterFindings.length} header/footer element(s) detected. Verify these are properly structured for accessibility.`;
+      
+      if (d.headerFooterFindings.length > 0) {
+        const count = d.headerFooterFindings.length;
+        message += `\n\n📍 ${count} element${count > 1 ? 's' : ''} found - Click to expand details`;
+        
+        const footerDetails = d.headerFooterFindings.map((item, index) => {
+          let detail = `${index + 1}. Slide ${item.slideNumber}: ${item.type}`;
+          if (item.location) detail += ` (${item.location})`;
+          if (item.repeatedText) detail += `\n    Content: "${item.repeatedText.substring(0, 60)}..."`;
+          if (item.recommendation) detail += `\n    Recommendation: ${item.recommendation}`;
+          return detail;
+        }).join('\n\n');
+        
+        message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View ${count} Header/Footer${count > 1 ? ' Elements' : ''}</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${footerDetails}</div>\n</details>`;
+      }
+      
+      out.push({
+        type: 'flagged',
+        message: message,
+      });
+    }
+
     // --- PowerPoint: missing slide titles ---
   if ((d as any).slidesMissingTitles?.length) {
     for (const s of (d as any).slidesMissingTitles) {
@@ -906,11 +1223,36 @@ export class DashboardComponent {
     }
   }
 
-    if (d.colorContrastIssues?.length)
+    if (d.colorContrastIssues?.length) {
+      const slideCounts = new Map<number, number>();
+
+      for (const issue of d.colorContrastIssues) {
+        if (typeof issue.slideNumber !== 'number') continue;
+        slideCounts.set(issue.slideNumber, (slideCounts.get(issue.slideNumber) || 0) + 1);
+      }
+
+      const slideEntries = Array.from(slideCounts.entries()).sort((a, b) => a[0] - b[0]);
+      let message = `${d.colorContrastIssues.length} low contrast text run(s) detected against a white background. Consider increasing contrast for readability.`;
+
+      if (slideEntries.length > 0) {
+        const slideSummary = slideEntries
+          .map(([slideNumber, count]) => `Slide ${slideNumber}${count > 1 ? ` (${count} issue(s))` : ''}`)
+          .join(', ');
+
+        message += `\n\nAffected slide${slideEntries.length > 1 ? 's' : ''}: ${slideSummary}`;
+
+        const slideDetails = slideEntries
+          .map(([slideNumber, count]) => `Slide ${slideNumber}: ${count} low contrast issue${count > 1 ? 's' : ''}`)
+          .join('\n');
+
+        message += `\n\n<details class="mt-2">\n<summary class="cursor-pointer text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">View contrast issue slides</summary>\n<div class="mt-2 pl-4 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-line">${slideDetails}</div>\n</details>`;
+      }
+
       out.push({
         type: 'flagged',
-        message: `${d.colorContrastIssues.length} low contrast text run(s) detected against a white background. Consider increasing contrast for readability.`,
+        message,
       });
+    }
 
     if (d.languageDefaultIssue && !d.languageDefaultFixed)
       out.push({
@@ -923,137 +1265,210 @@ export class DashboardComponent {
     return out;
   }
 
-  downloadFixed() {
+  // downloadFixed() {
+  //   const downloadUrl = `${environment.apiUrl}${environment.downloadEndpoint}`;
+
+  //   if (!this.selectedFile) {
+  //     console.error('No file selected for download');
+  //     return; // Early return if no file is selected
+  //   }
+  //   // Prepare form data to send file to the server
+  //   const formData = new FormData();
+  //   formData.append('file', this.selectedFile); // Add the file object
+
+  //   // Send POST request with file object
+  //   this.http
+  //     .post(downloadUrl, formData, {
+  //       responseType: 'blob',
+  //       observe: 'response',
+  //     })
+  //     .subscribe({
+  //       next: (response: HttpResponse<Blob>) => {
+  //         // Check if the response body is not null
+  //         const blob = response.body;
+  //         if (!blob) {
+  //           console.error('Error: Empty response body');
+  //           return;
+  //         }
+
+  //         const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+  //         // If server returned JSON (error payload), parse and show a user message
+  //         if (contentType.includes('application/json')) {
+  //           // blob.text() returns a promise with the JSON string
+  //           blob.text().then((txt) => {
+  //             try {
+  //               const payload = JSON.parse(txt);
+  //               this.issues = [
+  //                 { type: 'flagged', message: payload?.error || 'Server error during remediation' },
+  //               ];
+  //             } catch (e) {
+  //               this.issues = [
+  //                 { type: 'flagged', message: 'Unexpected server response during remediation.' },
+  //               ];
+  //             }
+  //           });
+  //           return;
+  //         }
+
+  //         // Extract filename from Content-Disposition header (supports filename and filename*=)
+  //         const contentDisposition = response.headers.get('content-disposition') || response.headers.get('Content-Disposition') || '';
+  //         let filename = 'remediated-document.docx'; // default
+
+  //         if (contentDisposition) {
+  //           // Try filename*=UTF-8''name.docx first
+  //           const fstar = contentDisposition.match(/filename\*=[^']*''([^;\n\r]+)/i);
+  //           if (fstar && fstar[1]) {
+  //             try {
+  //               filename = decodeURIComponent(fstar[1]);
+  //             } catch (e) {
+  //               filename = fstar[1];
+  //             }
+  //           } else {
+  //             const matches = /filename=\s*"?([^";]+)"?/i.exec(contentDisposition);
+  //             if (matches && matches[1]) filename = matches[1];
+  //           }
+  //         }
+
+  //         // Store the filename for display purposes
+  //         this.downloadFileName = filename;
+
+  //         // Note: do not mutate the server-provided summary here. The UI shows a
+  //         // client-estimated auto-fix count with `countAutoFixableIssues()` and
+  //         // we perform an authoritative re-check immediately after download that
+  //         // replaces the report with the server's post-remediation response.
+
+  //         // Create download link with the correct filename
+  //         const url = URL.createObjectURL(blob);
+  //         const a = document.createElement('a');
+  //         a.href = url;
+  //         a.download = filename; // Use the filename from the header
+  //         a.click();
+  //         URL.revokeObjectURL(url);
+
+  //         // If the original report said the document was protected, show a post-download banner
+  //         // with alternatives and a button to open the unblock help modal.
+  //         if (this.remediation?.report?.details?.documentProtected) {
+  //           this.showPostDownloadBanner = true;
+  //         }
+          
+  //         const isPptx = filename.toLowerCase().endsWith('.pptx');
+  //         if (isPptx) return;
+  //         // Authoritative re-check: send the downloaded blob back to the upload analysis endpoint
+  //         // so the UI shows the exact server-side post-remediation report (avoids client heuristics).
+  //         try {
+  //           const analysisUrl = `${environment.apiUrl}${environment.uploadEndpoint}`;
+  //           const reForm = new FormData();
+  //           // Append blob as a file; use the filename determined above so server sees correct name
+  //           reForm.append('file', blob, filename);
+
+  //           this.http.post(analysisUrl, reForm).subscribe({
+  //             next: (resp: any) => {
+  //               // Replace remediation with authoritative server response and re-render issues
+  //               try {
+  //                 const res = resp as DocxRemediationResponse;
+  //                 if (res && res.report) {
+  //                   this.remediation = res;
+  //                   this.fileName = res.suggestedFileName ? res.suggestedFileName : filename;
+  //                   this.issues = this.flattenIssues(res);
+  //                   // Hide post-download banner if server confirms protection removed
+  //                   if (!this.remediation.report.details?.documentProtected) {
+  //                     this.showPostDownloadBanner = false;
+  //                   }
+  //                 }
+  //               } catch (e) {
+  //                 console.warn('Failed to parse authoritative report', e);
+  //               }
+  //             },
+  //             error: (err) => {
+  //               console.warn('Authoritative re-check failed', err);
+  //               // keep existing remediation but surface a message
+  //               this.issues = [
+  //                 { type: 'flagged', message: `Could not refresh authoritative report: ${err?.message || err?.statusText || 'error'}` },
+  //               ];
+  //             },
+  //           });
+  //         } catch (e) {
+  //           console.warn('Authoritative re-check error', e);
+  //         }
+  //       },
+  //       error: (err) => {
+  //         console.error('Download failed', err);
+  //         this.issues = [
+  //           { type: 'flagged', message: `Download failed: ${err?.error?.message || err.statusText || err.message || 'Unknown error'}` },
+  //         ];
+  //       },
+  //     });
+  // }
+
+  downloadFixed(targetFileName?: string) {
     const downloadUrl = `${environment.apiUrl}${environment.downloadEndpoint}`;
 
-    if (!this.selectedFile) {
-      console.error('No file selected for download');
-      return; // Early return if no file is selected
-    }
-    // Prepare form data to send file to the server
-    const formData = new FormData();
-    formData.append('file', this.selectedFile); // Add the file object
+    const fileName =
+      targetFileName ||
+      this.remediation?.suggestedFileName ||
+      this.fileName ||
+      this.downloadFileName;
 
-    // Send POST request with file object
+    if (!fileName) {
+      this.issues = [{ type: 'flagged', message: 'No remediated file available for download.' }];
+      return;
+    }
+
     this.http
-      .post(downloadUrl, formData, {
-        responseType: 'blob',
-        observe: 'response',
-      })
+      .post(
+        downloadUrl,
+        { fileName },
+        {
+          responseType: 'blob',
+          observe: 'response',
+        }
+      )
       .subscribe({
         next: (response: HttpResponse<Blob>) => {
-          // Check if the response body is not null
           const blob = response.body;
           if (!blob) {
-            console.error('Error: Empty response body');
+            this.issues = [{ type: 'flagged', message: 'Empty download response.' }];
             return;
           }
 
-          const contentType = (response.headers.get('content-type') || '').toLowerCase();
+          const contentDisposition =
+            response.headers.get('content-disposition') ||
+            response.headers.get('Content-Disposition') ||
+            '';
 
-          // If server returned JSON (error payload), parse and show a user message
-          if (contentType.includes('application/json')) {
-            // blob.text() returns a promise with the JSON string
-            blob.text().then((txt) => {
-              try {
-                const payload = JSON.parse(txt);
-                this.issues = [
-                  { type: 'flagged', message: payload?.error || 'Server error during remediation' },
-                ];
-              } catch (e) {
-                this.issues = [
-                  { type: 'flagged', message: 'Unexpected server response during remediation.' },
-                ];
-              }
-            });
-            return;
-          }
-
-          // Extract filename from Content-Disposition header (supports filename and filename*=)
-          const contentDisposition = response.headers.get('content-disposition') || response.headers.get('Content-Disposition') || '';
-          let filename = 'remediated-document.docx'; // default
+          let filename = this.cleanName(fileName);
 
           if (contentDisposition) {
-            // Try filename*=UTF-8''name.docx first
             const fstar = contentDisposition.match(/filename\*=[^']*''([^;\n\r]+)/i);
             if (fstar && fstar[1]) {
               try {
-                filename = decodeURIComponent(fstar[1]);
-              } catch (e) {
-                filename = fstar[1];
+                filename = this.cleanName(decodeURIComponent(fstar[1]));
+              } catch {
+                filename = this.cleanName(fstar[1]);
               }
             } else {
               const matches = /filename=\s*"?([^";]+)"?/i.exec(contentDisposition);
-              if (matches && matches[1]) filename = matches[1];
+              if (matches && matches[1]) filename = this.cleanName(matches[1]);
             }
           }
 
-          // Store the filename for display purposes
           this.downloadFileName = filename;
 
-          // Note: do not mutate the server-provided summary here. The UI shows a
-          // client-estimated auto-fix count with `countAutoFixableIssues()` and
-          // we perform an authoritative re-check immediately after download that
-          // replaces the report with the server's post-remediation response.
-
-          // Create download link with the correct filename
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = filename; // Use the filename from the header
+          // a.download = filename;
+          a.download = this.cleanName(fileName);
           a.click();
           URL.revokeObjectURL(url);
-
-          // If the original report said the document was protected, show a post-download banner
-          // with alternatives and a button to open the unblock help modal.
-          if (this.remediation?.report?.details?.documentProtected) {
-            this.showPostDownloadBanner = true;
-          }
-          
-          const isPptx = filename.toLowerCase().endsWith('.pptx');
-          if (isPptx) return;
-          // Authoritative re-check: send the downloaded blob back to the upload analysis endpoint
-          // so the UI shows the exact server-side post-remediation report (avoids client heuristics).
-          try {
-            const analysisUrl = `${environment.apiUrl}${environment.uploadEndpoint}`;
-            const reForm = new FormData();
-            // Append blob as a file; use the filename determined above so server sees correct name
-            reForm.append('file', blob, filename);
-
-            this.http.post(analysisUrl, reForm).subscribe({
-              next: (resp: any) => {
-                // Replace remediation with authoritative server response and re-render issues
-                try {
-                  const res = resp as DocxRemediationResponse;
-                  if (res && res.report) {
-                    this.remediation = res;
-                    this.fileName = res.suggestedFileName ? res.suggestedFileName : filename;
-                    this.issues = this.flattenIssues(res);
-                    // Hide post-download banner if server confirms protection removed
-                    if (!this.remediation.report.details?.documentProtected) {
-                      this.showPostDownloadBanner = false;
-                    }
-                  }
-                } catch (e) {
-                  console.warn('Failed to parse authoritative report', e);
-                }
-              },
-              error: (err) => {
-                console.warn('Authoritative re-check failed', err);
-                // keep existing remediation but surface a message
-                this.issues = [
-                  { type: 'flagged', message: `Could not refresh authoritative report: ${err?.message || err?.statusText || 'error'}` },
-                ];
-              },
-            });
-          } catch (e) {
-            console.warn('Authoritative re-check error', e);
-          }
         },
         error: (err) => {
-          console.error('Download failed', err);
           this.issues = [
-            { type: 'flagged', message: `Download failed: ${err?.error?.message || err.statusText || err.message || 'Unknown error'}` },
+            {
+              type: 'flagged',
+              message: `Download failed: ${err?.error?.detail || err?.message || 'Unknown error'}`,
+            },
           ];
         },
       });
@@ -1139,4 +1554,9 @@ export class DashboardComponent {
   //   if (!this.issues) return 0;
   //   return this.issues.filter(issue => issue.type === 'fixed').length;
   // }
+
+  cleanName(name: string): string {
+    return name.replace(/^[0-9a-f]{8}_/i, '');
+  }
+
 }
