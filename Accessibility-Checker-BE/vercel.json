@@ -44,6 +44,14 @@
     }
   ]
   ,
+  "routes": [
+    {
+      "src": "/api/cors-test",
+      "dest": "/api/cors-test.js",
+      "methods": ["GET", "OPTIONS"]
+    }
+  ],
+  ,
   "headers": [
     {
       "source": "/api/(.*)",
