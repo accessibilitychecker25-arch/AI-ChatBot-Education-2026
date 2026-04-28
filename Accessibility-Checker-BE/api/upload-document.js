@@ -1,5 +1,6 @@
 const Busboy = require('busboy');
 const JSZip = require('jszip');
+const { analyzePowerPoint } = require('../lib/pptx-analyzer');
 
 // Helper function to extract text from paragraph XML - moved to top for availability
 function extractTextFromParagraph(paragraphXml) {
@@ -70,7 +71,6 @@ module.exports = async (req, res) => {
         let report;
         if (isPowerPoint) {
           // Route PowerPoint files to the PowerPoint analyzer
-          const { analyzePowerPoint } = require('../lib/pptx-analyzer');
           report = await analyzePowerPoint(fileData, filename);
         } else {
           // Route Word documents to the Word analyzer
