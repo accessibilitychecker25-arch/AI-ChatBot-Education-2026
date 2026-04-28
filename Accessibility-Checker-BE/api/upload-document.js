@@ -64,13 +64,28 @@ module.exports = async (req, res) => {
         return;
       }
 
-      if (!filename.toLowerCase().endsWith('.docx')) {
-        res.status(400).json({ error: 'Please upload a .docx file' });
+      const filenameLower = filename.toLowerCase();
+      
+      // Support both PowerPoint and Word documents
+      const isPowerPoint = ['.pptx', '.ppt', '.pps', '.pot', '.potx', '.ppsx'].some(ext => filenameLower.endsWith(ext));
+      const isWord = filenameLower.endsWith('.docx');
+
+      if (!isPowerPoint && !isWord) {
+        res.status(400).json({ error: 'Please upload a PowerPoint or Word document (.docx, .pptx)' });
         return;
       }
 
       try {
-        const report = await analyzeDocx(fileData, filename);
+        let report;
+        if (isPowerPoint) {
+          // Route PowerPoint files to the PowerPoint analyzer
+          const uploadPowerpointModule = require('./upload-powerpoint');
+          report = await uploadPowerpointModule.analyzePowerPoint(fileData, filename);
+        } else {
+          // Route Word documents to the Word analyzer
+          report = await analyzeDocx(fileData, filename);
+        }
+        
         res.status(200).json({
           fileName: filename,
           suggestedFileName: filename,
