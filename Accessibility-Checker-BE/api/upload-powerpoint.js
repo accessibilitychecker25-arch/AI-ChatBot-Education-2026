@@ -1,5 +1,12 @@
 const Busboy = require('busboy');
-const { analyzePowerPoint } = require('../lib/pptx-analyzer');
+
+let analyzePowerPoint;
+try {
+  const pptxAnalyzer = require('../lib/pptx-analyzer');
+  analyzePowerPoint = pptxAnalyzer.analyzePowerPoint;
+} catch (err) {
+  console.error('Failed to load pptx-analyzer:', err);
+}
 
 module.exports = async (req, res) => {
   // Set CORS headers IMMEDIATELY for all requests
@@ -56,6 +63,9 @@ module.exports = async (req, res) => {
       }
 
       try {
+        if (!analyzePowerPoint) {
+          throw new Error('PowerPoint analyzer not available');
+        }
         const report = await analyzePowerPoint(fileData, filename);
         res.status(200).json({
           fileName: filename,
@@ -63,6 +73,7 @@ module.exports = async (req, res) => {
           report: report
         });
       } catch (error) {
+        console.error('PowerPoint analysis error:', error);
         res.status(500).json({ error: error.message });
       }
     });

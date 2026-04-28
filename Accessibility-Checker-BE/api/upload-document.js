@@ -1,6 +1,13 @@
 const Busboy = require('busboy');
 const JSZip = require('jszip');
-const { analyzePowerPoint } = require('../lib/pptx-analyzer');
+
+let analyzePowerPoint;
+try {
+  const pptxAnalyzer = require('../lib/pptx-analyzer');
+  analyzePowerPoint = pptxAnalyzer.analyzePowerPoint;
+} catch (err) {
+  console.error('Failed to load pptx-analyzer:', err);
+}
 
 // Helper function to extract text from paragraph XML - moved to top for availability
 function extractTextFromParagraph(paragraphXml) {
@@ -71,6 +78,9 @@ module.exports = async (req, res) => {
         let report;
         if (isPowerPoint) {
           // Route PowerPoint files to the PowerPoint analyzer
+          if (!analyzePowerPoint) {
+            throw new Error('PowerPoint analyzer not available');
+          }
           report = await analyzePowerPoint(fileData, filename);
         } else {
           // Route Word documents to the Word analyzer
@@ -83,6 +93,7 @@ module.exports = async (req, res) => {
           report: report
         });
       } catch (error) {
+        console.error('Analysis error:', error);
         res.status(500).json({ error: error.message });
       }
     });
