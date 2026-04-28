@@ -8,6 +8,12 @@ try {
   console.error('Failed to load pptx-analyzer:', err);
 }
 
+// Helper function to send JSON with proper headers
+function sendJson(res, status, data) {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(status).end(JSON.stringify(data));
+}
+
 module.exports = async (req, res) => {
   // Set CORS headers IMMEDIATELY for all requests
   // This is crucial in Vercel serverless environment
@@ -23,7 +29,7 @@ module.exports = async (req, res) => {
   }
 
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
 
@@ -47,7 +53,7 @@ module.exports = async (req, res) => {
 
     busboy.on('finish', async () => {
       if (!fileData || !filename) {
-        res.status(400).json({ error: 'No file uploaded' });
+        sendJson(res, 400, { error: 'No file uploaded' });
         return;
       }
 
@@ -56,9 +62,7 @@ module.exports = async (req, res) => {
       const isValid = validExtensions.some(ext => filename.toLowerCase().endsWith(ext));
       
       if (!isValid) {
-        res.status(400).json({ 
-          error: 'Please upload a PowerPoint file (.pptx, .ppt, .pps, or .potx)' 
-        });
+        sendJson(res, 400, { error: 'Please upload a PowerPoint file (.pptx, .ppt, .pps, or .potx)' });
         return;
       }
 
@@ -67,20 +71,21 @@ module.exports = async (req, res) => {
           throw new Error('PowerPoint analyzer not available');
         }
         const report = await analyzePowerPoint(fileData, filename);
-        res.status(200).json({
+        sendJson(res, 200, {
           fileName: filename,
           suggestedFileName: filename,
           report: report
         });
       } catch (error) {
         console.error('PowerPoint analysis error:', error);
-        res.status(500).json({ error: error.message });
+        sendJson(res, 500, { error: error.message });
       }
     });
 
     req.pipe(busboy);
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Upload error:', error);
+    sendJson(res, 500, { error: error.message });
   }
 };

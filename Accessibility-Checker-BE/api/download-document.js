@@ -1,6 +1,12 @@
 const Busboy = require('busboy');
 const JSZip = require('jszip');
 
+// Helper function to send JSON with proper headers
+function sendJson(res, status, data) {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(status).end(JSON.stringify(data));
+}
+
 module.exports = async (req, res) => {
   // Set CORS headers IMMEDIATELY for all requests
   // This is crucial in Vercel serverless environment

@@ -9,6 +9,12 @@ try {
   console.error('Failed to load pptx-analyzer:', err);
 }
 
+// Helper function to send JSON with proper headers
+function sendJson(res, status, data) {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(status).end(JSON.stringify(data));
+}
+
 // Helper function to extract text from paragraph XML - moved to top for availability
 function extractTextFromParagraph(paragraphXml) {
   const textMatches = paragraphXml.match(/<w:t[^>]*>(.*?)<\/w:t>/g);
@@ -35,7 +41,7 @@ module.exports = async (req, res) => {
   }
 
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
 
@@ -59,7 +65,7 @@ module.exports = async (req, res) => {
 
     busboy.on('finish', async () => {
       if (!fileData || !filename) {
-        res.status(400).json({ error: 'No file uploaded' });
+        sendJson(res, 400, { error: 'No file uploaded' });
         return;
       }
 
@@ -70,7 +76,7 @@ module.exports = async (req, res) => {
       const isWord = filenameLower.endsWith('.docx');
 
       if (!isPowerPoint && !isWord) {
-        res.status(400).json({ error: 'Please upload a PowerPoint or Word document (.docx, .pptx)' });
+        sendJson(res, 400, { error: 'Please upload a PowerPoint or Word document (.docx, .pptx)' });
         return;
       }
 
@@ -87,21 +93,22 @@ module.exports = async (req, res) => {
           report = await analyzeDocx(fileData, filename);
         }
         
-        res.status(200).json({
+        sendJson(res, 200, {
           fileName: filename,
           suggestedFileName: filename,
           report: report
         });
       } catch (error) {
         console.error('Analysis error:', error);
-        res.status(500).json({ error: error.message });
+        sendJson(res, 500, { error: error.message });
       }
     });
 
     req.pipe(busboy);
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Upload error:', error);
+    sendJson(res, 500, { error: error.message });
   }
 };
 module.exports.analyzeDocx = analyzeDocx;
