@@ -15,6 +15,30 @@ function sendJson(res, status, data) {
   res.status(status).end(JSON.stringify(data));
 }
 
+// Helper function to set CORS headers
+function setCorsHeaders(req, res) {
+  const ALLOWED_ORIGINS = [
+    'https://ai-chat-bot-education-2026.vercel.app',  // Production frontend
+    'https://accessibilitychecker25-arch.github.io',
+    'https://kmoreland126.github.io',
+    'http://localhost:3000',
+    'http://localhost:4200'
+  ];
+
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // If no origin header, allow all (for non-browser requests)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
 // Helper function to extract text from paragraph XML - moved to top for availability
 function extractTextFromParagraph(paragraphXml) {
   const textMatches = paragraphXml.match(/<w:t[^>]*>(.*?)<\/w:t>/g);
@@ -28,12 +52,7 @@ function extractTextFromParagraph(paragraphXml) {
 
 module.exports = async (req, res) => {
   // Set CORS headers IMMEDIATELY for all requests
-  // This is crucial in Vercel serverless environment
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
-  res.setHeader('Access-Control-Max-Age', '86400');
+  setCorsHeaders(req, res);
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
