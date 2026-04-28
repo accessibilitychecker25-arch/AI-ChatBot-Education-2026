@@ -70,8 +70,8 @@ module.exports = async (req, res) => {
         let report;
         if (isPowerPoint) {
           // Route PowerPoint files to the PowerPoint analyzer
-          const uploadPowerpointModule = require('./upload-powerpoint');
-          report = await uploadPowerpointModule.analyzePowerPoint(fileData, filename);
+          const { analyzePowerPoint } = require('../lib/pptx-analyzer');
+          report = await analyzePowerPoint(fileData, filename);
         } else {
           // Route Word documents to the Word analyzer
           report = await analyzeDocx(fileData, filename);
