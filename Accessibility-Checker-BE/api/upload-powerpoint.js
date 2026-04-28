@@ -10,14 +10,23 @@ module.exports = async (req, res) => {
     'http://localhost:4200',
     'https://ai-chat-bot-education-2026.vercel.app'
   ];
+  
   const origin = req.headers.origin;
+  
+  // Always set CORS headers, but restrict to allowed origins
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+  } else if (!origin) {
+    // If no origin header (like from direct API calls), allow for testing
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
-
+  
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
