@@ -6,6 +6,7 @@ const sessionManager = require('../lib/session-manager');
 module.exports = async (req, res) => {
   // CORS headers
   const ALLOWED_ORIGINS = [
+    'https://ai-chat-bot-education-2026.vercel.app',  // Production frontend
     'https://accessibilitychecker25-arch.github.io',
     'https://kmoreland126.github.io', 
     'http://localhost:3000',
@@ -14,10 +15,14 @@ module.exports = async (req, res) => {
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // If no origin header, allow all (for non-browser requests)
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
