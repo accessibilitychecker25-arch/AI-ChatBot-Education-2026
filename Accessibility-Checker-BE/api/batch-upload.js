@@ -10,7 +10,8 @@ module.exports = async (req, res) => {
     'https://accessibilitychecker25-arch.github.io',
     'https://kmoreland126.github.io',
     'http://localhost:3000',
-    'http://localhost:4200'
+    'http://localhost:4200',
+    'https://ai-chat-bot-education-2026.vercel.app'
   ];
   const origin = req.headers.origin;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {

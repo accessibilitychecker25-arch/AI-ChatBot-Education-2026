@@ -1,1 +1,46 @@
-{}
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/upload-document",
+      "dest": "/api/upload-document.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/upload-powerpoint",
+      "dest": "/api/upload-powerpoint.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/batch-upload",
+      "dest": "/api/batch-upload.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/download-document",
+      "dest": "/api/download-document.js",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/batch-download",
+      "dest": "/api/batch-download.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/reports",
+      "dest": "/api/reports.js",
+      "methods": ["GET", "POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/session",
+      "dest": "/api/session.js",
+      "methods": ["POST", "OPTIONS"]
+    }
+  ]
+}
