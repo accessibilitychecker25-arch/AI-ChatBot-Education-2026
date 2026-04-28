@@ -41,17 +41,13 @@
       "src": "/api/session",
       "dest": "/api/session.js",
       "methods": ["POST", "OPTIONS"]
-    }
-  ]
-  ,
-  "routes": [
+    },
     {
       "src": "/api/cors-test",
       "dest": "/api/cors-test.js",
       "methods": ["GET", "OPTIONS"]
     }
   ],
-  ,
   "headers": [
     {
       "source": "/api/(.*)",
