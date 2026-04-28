@@ -1,63 +1,19 @@
 {
   "version": 2,
+  "buildCommand": "echo 'No build needed'",
   "builds": [
     {
       "src": "api/**/*.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "lib/**"
+      }
     }
   ],
   "routes": [
     {
-      "src": "/api/upload-document",
-      "dest": "/api/upload-document.js",
-      "methods": ["POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/upload-powerpoint",
-      "dest": "/api/upload-powerpoint.js",
-      "methods": ["POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/batch-upload",
-      "dest": "/api/batch-upload.js",
-      "methods": ["POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/download-document",
-      "dest": "/api/download-document.js",
-      "methods": ["GET", "OPTIONS"]
-    },
-    {
-      "src": "/api/batch-download",
-      "dest": "/api/batch-download.js",
-      "methods": ["POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/reports",
-      "dest": "/api/reports.js",
-      "methods": ["GET", "POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/session",
-      "dest": "/api/session.js",
-      "methods": ["POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/cors-test",
-      "dest": "/api/cors-test.js",
-      "methods": ["GET", "OPTIONS"]
-    }
-  ],
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" },
-        { "key": "Access-Control-Expose-Headers", "value": "Content-Disposition, Content-Type" },
-        { "key": "Access-Control-Max-Age", "value": "86400" }
-      ]
+      "src": "/api/(.*)",
+      "dest": "/api/$1.js"
     }
   ]
 }
