@@ -2,34 +2,17 @@ const Busboy = require('busboy');
 const JSZip = require('jszip');
 
 module.exports = async (req, res) => {
-  // CORS: safe allowlist — echo back the requesting Origin when allowed.
-  const ALLOWED_ORIGINS = [
-    'https://accessibilitychecker25-arch.github.io',
-    'https://kmoreland126.github.io',
-    'http://localhost:3000',
-    'http://localhost:4200',
-    'https://ai-chat-bot-education-2026.vercel.app'
-  ];
-  
-  const origin = req.headers.origin;
-  
-  // Always set CORS headers, but restrict to allowed origins
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
-  } else if (!origin) {
-    // If no origin header (like from direct API calls), allow for testing
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
-  }
+  // Set CORS headers IMMEDIATELY for all requests
+  // This is crucial in Vercel serverless environment
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400');
 
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
