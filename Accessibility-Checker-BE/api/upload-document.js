@@ -1,5 +1,20 @@
 const Busboy = require('busboy');
 const JSZip = require('jszip');
+const { applyCorsHeaders, handleCorsPreflight } = require('../lib/cors-middleware');
+
+let analyzePowerPoint;
+try {
+  const pptxAnalyzer = require('../lib/pptx-analyzer');
+  analyzePowerPoint = pptxAnalyzer.analyzePowerPoint;
+} catch (err) {
+  console.error('Failed to load pptx-analyzer:', err);
+}
+
+// Helper function to send JSON with proper headers
+function sendJson(res, status, data) {
+  res.setHeader('Content-Type', 'application/json');
+  res.status(status).end(JSON.stringify(data));
+}
 
 // Helper function to extract text from paragraph XML - moved to top for availability
 function extractTextFromParagraph(paragraphXml) {
@@ -13,29 +28,13 @@ function extractTextFromParagraph(paragraphXml) {
 }
 
 module.exports = async (req, res) => {
-  // CORS: safe allowlist — echo back the requesting Origin when allowed.
-  const ALLOWED_ORIGINS = [
-    'https://accessibilitychecker25-arch.github.io',
-    'https://kmoreland126.github.io',
-    'http://localhost:3000',
-    'http://localhost:4200'
-  ];
-  const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  // Expose Content-Disposition for downloads and Content-Type for clients
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
+  if (handleCorsPreflight(req, res, { allowedMethods: 'POST, OPTIONS' })) {
     return;
   }
+  applyCorsHeaders(req, res, { allowedMethods: 'POST, OPTIONS' });
 
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+    sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
 
@@ -59,31 +58,50 @@ module.exports = async (req, res) => {
 
     busboy.on('finish', async () => {
       if (!fileData || !filename) {
-        res.status(400).json({ error: 'No file uploaded' });
+        sendJson(res, 400, { error: 'No file uploaded' });
         return;
       }
 
-      if (!filename.toLowerCase().endsWith('.docx')) {
-        res.status(400).json({ error: 'Please upload a .docx file' });
+      const filenameLower = filename.toLowerCase();
+
+      // Support both PowerPoint and Word documents
+      const isPowerPoint = ['.pptx', '.ppt', '.pps', '.pot', '.potx', '.ppsx'].some(ext => filenameLower.endsWith(ext));
+      const isWord = filenameLower.endsWith('.docx');
+
+      if (!isPowerPoint && !isWord) {
+        sendJson(res, 400, { error: 'Please upload a PowerPoint or Word document (.docx, .pptx)' });
         return;
       }
 
       try {
-        const report = await analyzeDocx(fileData, filename);
-        res.status(200).json({
+        let report;
+        if (isPowerPoint) {
+          // Route PowerPoint files to the PowerPoint analyzer
+          if (!analyzePowerPoint) {
+            throw new Error('PowerPoint analyzer not available');
+          }
+          report = await analyzePowerPoint(fileData, filename);
+        } else {
+          // Route Word documents to the Word analyzer
+          report = await analyzeDocx(fileData, filename);
+        }
+
+        sendJson(res, 200, {
           fileName: filename,
           suggestedFileName: filename,
           report: report
         });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Analysis error:', error);
+        sendJson(res, 500, { error: error.message });
       }
     });
 
     req.pipe(busboy);
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Upload error:', error);
+    sendJson(res, 500, { error: error.message });
   }
 };
 module.exports.analyzeDocx = analyzeDocx;
