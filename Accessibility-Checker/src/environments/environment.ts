@@ -1,8 +1,6 @@
 export const environment = {
   production: false,
-  // 1. Point to your local Python backend
-  apiUrl: 'http://localhost:5000', 
-  // 2. Point to the specific route we created in server.py
-  uploadEndpoint: '/upload',
-  downloadEndpoint: '/download', 
+  apiUrl: 'https://ai-chat-bot-education-2026-accessibility-checkers-projects.vercel.app',
+  uploadEndpoint: '/api/upload-document',
+  downloadEndpoint: '/api/download-document',
 };
