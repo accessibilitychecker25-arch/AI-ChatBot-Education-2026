@@ -1,0 +1,18 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "docs",
+  "rewrites": [
+    {
+      "source": "/api/upload-document",
+      "destination": "https://accessibility-checker-be.vercel.app/api/upload-document"
+    },
+    {
+      "source": "/api/download-document",
+      "destination": "https://accessibility-checker-be.vercel.app/api/download-document"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
