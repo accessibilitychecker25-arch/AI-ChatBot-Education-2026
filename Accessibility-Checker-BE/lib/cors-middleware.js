@@ -18,15 +18,10 @@ function applyCorsHeaders(req, res, options = {}) {
   const allowedHeaders = options.allowedHeaders || 'Content-Type, Authorization, X-Session-ID';
   const exposeHeaders = options.exposeHeaders || 'Content-Disposition, Content-Type';
 
-  const origin = getAllowedOrigin(req.headers.origin);
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (!req.headers.origin) {
-    // Allow non-browser clients that do not send an Origin header
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
+  // Allow any origin to access this API. This resolves CORS missing allow origin issues
+  // for deployed frontends that may be on different domains or preview URLs.
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', allowedMethods);
   res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
   res.setHeader('Access-Control-Expose-Headers', exposeHeaders);
