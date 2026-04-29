@@ -4,11 +4,11 @@
   "rewrites": [
     {
       "source": "/api/upload-document",
-      "destination": "https://accessibility-checker-be.vercel.app/api/upload-document"
+      "destination": "https://ai-chat-bot-education-2026-kwitichdd.vercel.app/api/upload-document"
     },
     {
       "source": "/api/download-document",
-      "destination": "https://accessibility-checker-be.vercel.app/api/download-document"
+      "destination": "https://ai-chat-bot-education-2026-kwitichdd.vercel.app/api/download-document"
     },
     {
       "source": "/(.*)",
