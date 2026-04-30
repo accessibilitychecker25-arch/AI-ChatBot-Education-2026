@@ -1,10 +1,14 @@
+# FastAPI web framework
 fastapi>=0.100.0
 uvicorn[standard]>=0.28.0
+
+# Document processing
 python-docx>=1.0.0
 lxml>=5.0.0
 python-multipart>=0.0.9
 
-# FREE Local AI Vision Models - 100% No API Costs!
+# FREE Local AI Vision Models for Alt Text Generation
+# BLIP and GIT models run locally on CPU/GPU - 100% FREE, No API Costs!
 transformers>=4.35.0
 torch>=2.0.0
 pillow>=10.0.0
@@ -12,8 +16,8 @@ pillow>=10.0.0
 # Optional: For faster inference with NVIDIA GPU
 # accelerate>=0.25.0
 
-# Windows COM automation for legacy PowerPoint conversion
+# Windows COM automation for legacy PowerPoint conversion (Windows only)
 pywin32>=306; sys_platform == 'win32'
 
-# Optional: Environment variable management (dotenv is optional)
-# python-dotenv>=1.0.0
+# Environment variable management
+python-dotenv>=1.0.0

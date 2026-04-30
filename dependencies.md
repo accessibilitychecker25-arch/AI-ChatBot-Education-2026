@@ -1,17 +1,31 @@
-# Dependencies Installation
+# Python Backend Deployment Guide
 
-Below are the commands to download and install the required dependencies for this branch of the tool.
+## Installation
 
-## Install Core AI Dependencies
-
-```bash
-pip install transformers>=4.35.0
-pip install torch>=2.0.0
-pip install pillow>=10.0.0
-```
-
-Or all at once:
+To install all required dependencies:
 
 ```bash
-pip install transformers>=4.35.0 torch>=2.0.0 pillow>=10.0.0
+cd Accessibility-Checker-BE/python-server
+pip install -r requirements.txt
 ```
+
+## Running Locally
+
+```bash
+cd Accessibility-Checker-BE/python-server
+uvicorn server2:app --reload
+```
+
+The API will be available at `http://localhost:8000`
+
+## Deployment
+
+For Hugging Face Spaces or other Python hosting:
+
+1. All dependencies are listed in `Accessibility-Checker-BE/python-server/requirements.txt`
+2. The main application is in `Accessibility-Checker-BE/python-server/server2.py`
+3. Models will auto-download on first use (~2GB for BLIP)
+
+## Dependencies
+
+See `Accessibility-Checker-BE/python-server/requirements.txt` for the complete list of required packages.
